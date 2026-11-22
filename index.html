@@ -110,7 +110,7 @@ document.addEventListener("mousemove",function(e){
     if(x+260>window.innerWidth)x=e.clientX-260;
     if(y+120>window.innerHeight)y=e.clientY-120;
     tip.style.left=x+"px";tip.style.top=y+"px";
-  }else{tip.style.display="none"}
+  }else if(!e.target.closest("svg")){tip.style.display="none"}
 });
 
 var curTab="congress";
