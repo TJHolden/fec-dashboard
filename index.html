@@ -603,10 +603,7 @@ function renderQtr(list){
   ms.forEach(function(m){m.periods.forEach(function(p){if(!labelSet[p.label]){labelSet[p.label]=1;labelOrder.push(p.label)}})});
   labelOrder.reverse();
   function qh(col,label){var isA=qtrSortCol===col;return '<th class="sortable'+(col!=="dist"&&col!=="name"?" r":"")+'" onclick="qtrSort(\''+col+'\')">'+label+'<span class="arrow'+(isA?" on":"")+'"> '+(isA?(qtrSortAsc?"&#9650;":"&#9660;"):"&#9650;")+'</span></th>'}
-  var qtrCycleBtns='<div style="display:flex;gap:2px;background:var(--s2);border-radius:4px;padding:2px;margin-left:12px">';
-  CYCLES.forEach(function(c){qtrCycleBtns+='<button class="tab'+(c===qtrCycle?" on":"")+'" onclick="qtrCycle='+c+';render()" style="font-size:.68rem;padding:4px 8px">'+c+'</button>'});
-  qtrCycleBtns+='</div>';
-  var detail='<div class="md-detail-head"><span>'+title+'</span><div style="display:flex;align-items:center">'+qtrCycleBtns+'<span class="md-count" style="margin-left:12px">'+count+'</span></div></div>';
+  var detail='<div class="md-detail-head"><span>'+title+'</span><span class="md-count">'+count+'</span></div>';
   detail+='<div class="tw"><table><thead><tr>'+qh("dist","District")+qh("name","Name")+(qtrSelState==="ALL"?qh("state","State"):"")+qh("receipts","Overall")+qh("coh","COH");
   labelOrder.forEach(function(l){detail+='<th class="r" style="font-size:.6rem">'+l.replace("PRE-","Pre-").replace("POST-","Post-")+'</th>'});
   detail+='</tr></thead><tbody>';
