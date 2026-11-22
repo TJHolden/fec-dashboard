@@ -56,24 +56,39 @@ async function fetchCycle(cycle){
 }
 
 async function fetchReports(candidates,cycle){
-  log("Fetching "+cycle+" quarterly reports ("+candidates.length+" candidates)...");
-  var RL={Q1:"Q1",Q2:"Q2",Q3:"Q3",Q4:"Q4","12P":"Pre-Primary","12C":"Pre-Convention","12G":"Pre-General","30G":"Post-General",YE:"Year-End"};
+  log("Fetching "+cycle+" quarterly reports for "+candidates.length+" candidates...");
+  var RL={Q1:"Q1",Q2:"Q2",Q3:"Q3",Q4:"Q4","12P":"Pre-Primary","12C":"Pre-Convention","12G":"Pre-General","30G":"Post-General",YE:"Year-End",MY:"Mid-Year"};
   var reports={};
-  var total=Math.ceil(candidates.length/20);
-  for(var i=0;i<candidates.length;i+=20){
-    var batch=candidates.slice(i,i+20);
-    var ids=batch.map(function(c){return"candidate_id="+c.candidate_id;}).join("&");
-    var bn=Math.floor(i/20)+1;
-    if(bn%10===0||bn===1||bn===total)log("  batch "+bn+"/"+total);
-    try{var d=await fetchWithRetry(BASE+"/reports/house-senate/?api_key="+FEC_KEY+"&"+ids+"&cycle="+cycle+"&per_page=100&sort_by=-coverage_end_date");
-      if(d.results){d.results.forEach(function(rpt){
-        var cid=rpt.candidate_id;if(!reports[cid])reports[cid]=[];
-        var rt=rpt.report_type||"";var year=rpt.coverage_end_date?rpt.coverage_end_date.substring(0,4):"";
-        var label=(RL[rt]||rt)+" "+year;
-        if(!reports[cid].find(function(p){return p.label===label;})){reports[cid].push({label:label,raised:rpt.receipts||0,coh:rpt.cash_on_hand_end_period||0});}
-      });}}catch(e){log("  error: "+e.message);}
-    await sleep(700);
+  var done=0;
+  // Fetch both current and prior cycle for 2 years of data
+  var cyclesToFetch=[cycle,cycle-2];
+  for(var ci=0;ci<cyclesToFetch.length;ci++){
+    var cy=cyclesToFetch[ci];
+    log("  Cycle "+cy+"...");
+    for(var i=0;i<candidates.length;i++){
+      var c=candidates[i];
+      var cid=c.candidate_id;
+      done++;
+      if(done%50===0||done===1)log("  candidate "+done+"/"+candidates.length*cyclesToFetch.length);
+      try{var d=await fetchWithRetry(BASE+"/reports/house-senate/?api_key="+FEC_KEY+"&candidate_id="+cid+"&cycle="+cy+"&per_page=100&sort_by=-coverage_end_date");
+        if(d.results&&d.results.length){
+          if(!reports[cid])reports[cid]=[];
+          d.results.forEach(function(rpt){
+            var rt=rpt.report_type||"";var year=rpt.coverage_end_date?rpt.coverage_end_date.substring(0,4):"";
+            var label=(RL[rt]||rt)+" "+year;
+            if(!reports[cid].find(function(p){return p.label===label;})){
+              reports[cid].push({label:label,raised:rpt.receipts||0,coh:rpt.cash_on_hand_end_period||0,end:rpt.coverage_end_date||""});
+            }
+          });
+        }
+      }catch(e){}
+      await sleep(350);
+    }
+    await sleep(2000);
   }
+  // Sort each candidate most recent first
+  Object.keys(reports).forEach(function(k){reports[k].sort(function(a,b){return(b.end||"").localeCompare(a.end||"")})});
+  log("  "+Object.keys(reports).length+" candidates have quarterly data");
   return reports;
 }
 
