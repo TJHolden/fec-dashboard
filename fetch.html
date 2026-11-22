@@ -99,7 +99,7 @@ async function go(){
   st.textContent="Starting... This takes 3-5 minutes (FEC rate limits).";
   try{
     var data={updated:new Date().toISOString(),cycles:{}};
-    var cycles=[2026,2024,2022,2020,2018,2016,2014,2012];
+    var cycles=[2028,2026,2024,2022,2020,2018,2016,2014,2012];
     for(var ci=0;ci<cycles.length;ci++){
       data.cycles[cycles[ci]]=await fetchCycle(cycles[ci]);
       await sleep(2000);
