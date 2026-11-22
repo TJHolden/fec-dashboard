@@ -737,11 +737,46 @@ var API_KEY="tPKgQ8WnMDRqrqMzfzLgd6KfmN7t8wMH9WNbcqpJ";
 var BASE_URL="https://api.open.fec.gov/v1";
 
 function loadFEC(){
+  // Try cache first for instant load
+  var cacheKey="fec_cache_"+CYCLE;
+  try{
+    var cached=localStorage.getItem(cacheKey);
+    if(cached){
+      var cdata=JSON.parse(cached);
+      if(cdata.ts&&Date.now()-cdata.ts<86400000&&cdata.candidates&&cdata.candidates.length>10){
+        ALL=cdata.candidates;
+        setStatus("ok",ALL.length+" candidates loaded from cache ("+CYCLE+" cycle). Refreshing in background...");
+        render();
+        // Refresh in background silently
+        fetchFECData(function(fresh){
+          if(fresh&&fresh.length>0){ALL=fresh;try{localStorage.setItem(cacheKey,JSON.stringify({ts:Date.now(),candidates:fresh}))}catch(e){}
+          setStatus("ok",ALL.length+" candidates ("+CYCLE+" cycle, updated just now).");render();
+          loadQuarterlyReports();}
+        });
+        // Also load quarterly from cache
+        var qcKey="fec_qcache_"+CYCLE;
+        try{var qc=localStorage.getItem(qcKey);if(qc){var qd=JSON.parse(qc);if(qd.periods){Object.keys(qd.periods).forEach(function(cid){var m=ALL.find(function(x){return x.candidateId===cid});if(m)m.periods=qd.periods[cid]});render()}}}catch(e){}
+        return;
+      }
+    }
+  }catch(e){}
   ALL=[];
   render();
-  setStatus("ok","Loading "+CYCLE+" cycle from FEC API...");
+  setStatus("ok","Loading "+CYCLE+" cycle from FEC API (first load may take 10-15s)...");
+  fetchFECData(function(candidates){
+    if(candidates&&candidates.length){
+      ALL=candidates;
+      try{localStorage.setItem(cacheKey,JSON.stringify({ts:Date.now(),candidates:ALL}))}catch(e){}
+      setStatus("ok",ALL.length+" candidates loaded ("+CYCLE+" cycle).");
+      render();
+      loadQuarterlyReports();
+    }
+  });
+}
+
+function fetchFECData(cb){
   var ctrl=new AbortController();
-  setTimeout(function(){ctrl.abort()},8000);
+  setTimeout(function(){ctrl.abort()},12000);
   fetch(BASE_URL+"/candidates/totals/?api_key="+API_KEY+"&party=REP&office=H&cycle="+CYCLE+"&election_year="+CYCLE+"&is_active_candidate=true&sort_by=-receipts&per_page=100",{signal:ctrl.signal})
     .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()})
     .then(function(d){
@@ -763,18 +798,7 @@ function loadFEC(){
       var seen={};
       results.forEach(function(c){var id=c.candidate_id;if(!seen[id]||(c.receipts||0)>(seen[id].receipts||0))seen[id]=c});
       var uniq=Object.values(seen);
-      ALL=uniq.map(function(c){
-        var nm=c.name||"";var parts=nm.split(",");var name=parts.length>=2?(parts[1].trim().split(" ")[0]+" "+parts[0].trim()).replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()}).replace(/  +/g," "):nm;
-        var dnum=c.district_number!=null?c.district_number:c.district;
-        var dstr=(dnum===0||dnum==="0"||dnum==null||dnum==="")?"00":String(dnum).padStart(2,"0");
-        var dist=c.state+"-"+dstr;
-        var num=function(v){var n=parseFloat(v);return isNaN(n)?0:n};
-        return{name:name,state:c.state,sn:SN[c.state]||c.state,dist:dist,office:c.office,
-          type:c.incumbent_challenge==="I"?"Incumbent":c.incumbent_challenge==="C"?"Challenger":"Open",
-          receipts:num(c.receipts),coh:num(c.cash_on_hand_end_period)||num(c.last_cash_on_hand_end_period),
-          disbursements:num(c.disbursements),indiv:num(c.individual_contributions)||num(c.individual_itemized_contributions),
-          pac:num(c.other_political_committee_contributions),candidateId:c.candidate_id,periods:[]};
-      }).sort(function(a,b){return b.receipts-a.receipts});
+      var num=function(v){var n=parseFloat(v);return isNaN(n)?0:n};
       setStatus("ok",ALL.length+" Republican candidates loaded. Loading quarterly reports...");
       render();
       // Now fetch quarterly reports for incumbents
@@ -821,6 +845,10 @@ function loadQuarterlyReports(overrideCycle){
       if(done%5===0||done===batches.length){
         setStatus("ok",ALL.length+" candidates, "+done+"/"+batches.length+" report batches ("+useCycle+" cycle).");
         render();
+        // Cache quarterly data
+        if(done===batches.length){
+          try{var qcKey="fec_qcache_"+useCycle;var qp={};ALL.forEach(function(m){if(m.periods&&m.periods.length)qp[m.candidateId]=m.periods});localStorage.setItem(qcKey,JSON.stringify({periods:qp}))}catch(e){}
+        }
       }
     }).catch(function(){done++});
   }
