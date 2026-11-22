@@ -2,11 +2,11 @@
 <html><head><title>FEC Data Updater</title></head>
 <body style="font-family:system-ui;max-width:600px;margin:40px auto;padding:20px">
 <h2>FEC Data Updater</h2>
-<p>Fetches all Republican House candidate data from the FEC API and saves it directly to GitHub. The dashboard will load instantly after this runs.</p>
+<p>Fetches all Republican House candidate data and saves it to GitHub.</p>
 <div id="status" style="padding:12px;background:#f0f0f0;border-radius:6px;margin:16px 0;white-space:pre-wrap;max-height:400px;overflow-y:auto">Ready</div>
 <div style="margin-bottom:12px">
-  <label style="font-size:14px;font-weight:600">GitHub Token (saved locally):</label><br>
-  <input id="tok" type="password" style="width:100%;padding:8px;margin-top:4px;border:1px solid #ccc;border-radius:4px" placeholder="Paste your GitHub token here">
+  <label style="font-size:14px;font-weight:600">GitHub Token:</label><br>
+  <input id="tok" type="password" style="width:100%;padding:8px;margin-top:4px;border:1px solid #ccc;border-radius:4px">
 </div>
 <button id="btn" onclick="go()" style="padding:12px 24px;font-size:16px;background:#a62422;color:white;border:none;border-radius:6px;cursor:pointer">Update FEC Data Now</button>
 <script>
@@ -16,30 +16,37 @@ var BASE="https://api.open.fec.gov/v1";
 var REPO="TJHolden/fec-dashboard";
 var st=document.getElementById("status");
 var tokInput=document.getElementById("tok");
-
-// Load saved token
 try{var saved=localStorage.getItem("gh_token");if(saved){tokInput.value=saved;GH_TOKEN=saved;}}catch(e){}
-tokInput.addEventListener("input",function(){GH_TOKEN=this.value;try{localStorage.setItem("gh_token",this.value)}catch(e){}});
+tokInput.addEventListener("input",function(){GH_TOKEN=this.value;try{localStorage.setItem("gh_token",this.value);}catch(e){}});
 
-function log(msg){st.textContent+="\n"+msg;st.scrollTop=st.scrollHeight;}
+function log(msg){st.textContent+="\n"+msg;st.scrollTop=999999;}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
 
-async function fetchPage(cycle,page){
-  var r=await fetch(BASE+"/candidates/totals/?api_key="+FEC_KEY+"&party=REP&office=H&cycle="+cycle+"&election_year="+cycle+"&is_active_candidate=true&sort_by=-receipts&per_page=100&page="+page);
-  if(!r.ok)throw new Error("HTTP "+r.status);
-  return r.json();
+async function fetchWithRetry(url,retries){
+  retries=retries||3;
+  for(var i=0;i<retries;i++){
+    var r=await fetch(url);
+    if(r.ok)return r.json();
+    if(r.status===429){
+      var wait=Math.pow(2,i)*15000;
+      log("  Rate limited. Waiting "+Math.round(wait/1000)+"s...");
+      await sleep(wait);
+    }else{throw new Error("HTTP "+r.status);}
+  }
+  throw new Error("Rate limited after retries");
 }
 
 async function fetchCycle(cycle){
-  log("Fetching "+cycle+" cycle page 1...");
-  var d=await fetchPage(cycle,1);
+  log("Fetching "+cycle+" cycle...");
+  var d=await fetchWithRetry(BASE+"/candidates/totals/?api_key="+FEC_KEY+"&party=REP&office=H&cycle="+cycle+"&election_year="+cycle+"&is_active_candidate=true&sort_by=-receipts&per_page=100&page=1");
   if(!d.results){log("  no results");return[];}
   var results=d.results;
   var pages=d.pagination?d.pagination.pages:1;
-  log("  "+d.pagination.count+" total, "+pages+" pages");
+  log("  "+d.pagination.count+" candidates, "+pages+" pages");
   for(var p=2;p<=Math.min(pages,20);p++){
-    log("  page "+p+"/"+pages);
-    try{var d2=await fetchPage(cycle,p);if(d2.results)results=results.concat(d2.results);}catch(e){log("  error: "+e.message);}
-    await new Promise(function(r){setTimeout(r,250);});
+    await sleep(700);
+    try{var d2=await fetchWithRetry(BASE+"/candidates/totals/?api_key="+FEC_KEY+"&party=REP&office=H&cycle="+cycle+"&election_year="+cycle+"&is_active_candidate=true&sort_by=-receipts&per_page=100&page="+p);
+      if(d2.results)results=results.concat(d2.results);}catch(e){log("  page "+p+" error: "+e.message);}
   }
   var seen={};
   results.forEach(function(c){var id=c.candidate_id;if(!seen[id]||(c.receipts||0)>(seen[id].receipts||0))seen[id]=c;});
@@ -49,7 +56,7 @@ async function fetchCycle(cycle){
 }
 
 async function fetchReports(candidates,cycle){
-  log("Fetching "+cycle+" quarterly reports...");
+  log("Fetching "+cycle+" quarterly reports ("+candidates.length+" candidates)...");
   var RL={Q1:"Q1",Q2:"Q2",Q3:"Q3",Q4:"Q4","12P":"Pre-Primary","12C":"Pre-Convention","12G":"Pre-General","30G":"Post-General",YE:"Year-End"};
   var reports={};
   var total=Math.ceil(candidates.length/20);
@@ -57,25 +64,24 @@ async function fetchReports(candidates,cycle){
     var batch=candidates.slice(i,i+20);
     var ids=batch.map(function(c){return"candidate_id="+c.candidate_id;}).join("&");
     var bn=Math.floor(i/20)+1;
-    if(bn%5===0||bn===1||bn===total)log("  reports batch "+bn+"/"+total);
-    try{
-      var r=await fetch(BASE+"/reports/house-senate/?api_key="+FEC_KEY+"&"+ids+"&cycle="+cycle+"&per_page=100&sort_by=-coverage_end_date");
-      var d=await r.json();
+    if(bn%10===0||bn===1||bn===total)log("  batch "+bn+"/"+total);
+    try{var d=await fetchWithRetry(BASE+"/reports/house-senate/?api_key="+FEC_KEY+"&"+ids+"&cycle="+cycle+"&per_page=100&sort_by=-coverage_end_date");
       if(d.results){d.results.forEach(function(rpt){
         var cid=rpt.candidate_id;if(!reports[cid])reports[cid]=[];
         var rt=rpt.report_type||"";var year=rpt.coverage_end_date?rpt.coverage_end_date.substring(0,4):"";
         var label=(RL[rt]||rt)+" "+year;
         if(!reports[cid].find(function(p){return p.label===label;})){reports[cid].push({label:label,raised:rpt.receipts||0,coh:rpt.cash_on_hand_end_period||0});}
-      });}
-    }catch(e){log("  error: "+e.message);}
-    await new Promise(function(r){setTimeout(r,400);});
+      });}}catch(e){log("  error: "+e.message);}
+    await sleep(700);
   }
   return reports;
 }
 
 async function commitToGitHub(data){
   log("\nCommitting data.json to GitHub...");
-  var content=btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  var json=JSON.stringify(data);
+  log("Data size: "+(json.length/1024/1024).toFixed(1)+" MB");
+  var content=btoa(unescape(encodeURIComponent(json)));
   var sha=null;
   try{var r=await fetch("https://api.github.com/repos/"+REPO+"/contents/data.json",{headers:{"Authorization":"Bearer "+GH_TOKEN}});
     if(r.ok){var d=await r.json();sha=d.sha;}}catch(e){}
@@ -83,29 +89,32 @@ async function commitToGitHub(data){
   if(sha)body.sha=sha;
   var r2=await fetch("https://api.github.com/repos/"+REPO+"/contents/data.json",{
     method:"PUT",headers:{"Authorization":"Bearer "+GH_TOKEN,"Content-Type":"application/json"},body:JSON.stringify(body)});
-  if(r2.ok){log("Done! data.json committed to GitHub.\nThe dashboard will now load instantly.");}
+  if(r2.ok){log("\nDone! data.json committed to GitHub.\nDashboard will load instantly now.\nRefresh: tjholden.github.io/fec-dashboard/");}
   else{var err=await r2.text();log("GitHub error: "+err);}
 }
 
 async function go(){
   if(!GH_TOKEN){st.textContent="Enter your GitHub token above first.";return;}
   document.getElementById("btn").disabled=true;
-  st.textContent="Starting...";
+  st.textContent="Starting... This takes 3-5 minutes (FEC rate limits).";
   try{
     var data={updated:new Date().toISOString(),cycles:{}};
-    for(var cycle of [2026,2024,2022,2020,2018,2016,2014,2012]){
-      data.cycles[cycle]=await fetchCycle(cycle);
-      await new Promise(function(r){setTimeout(r,300);});
+    var cycles=[2026,2024,2022,2020,2018,2016,2014,2012];
+    for(var ci=0;ci<cycles.length;ci++){
+      data.cycles[cycles[ci]]=await fetchCycle(cycles[ci]);
+      await sleep(2000);
     }
-    for(var cy of [2026,2024]){
+    // Quarterly reports for 2026 and 2024
+    for(var qi=0;qi<2;qi++){
+      var cy=[2026,2024][qi];
       if(data.cycles[cy]&&data.cycles[cy].length){
         var inc=data.cycles[cy].filter(function(c){return c.incumbent_challenge==="I"||(c.receipts||0)>100000;});
-        log("Fetching quarterly for "+inc.length+" candidates ("+cy+")...");
         data.cycles[cy+"_reports"]=await fetchReports(inc,cy);
+        await sleep(2000);
       }
     }
     await commitToGitHub(data);
-  }catch(e){log("Error: "+e.message);}
+  }catch(e){log("\nError: "+e.message+"\n\nTry clicking the button again - it will retry where it left off.");}
   document.getElementById("btn").disabled=false;
 }
 </script>
