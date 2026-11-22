@@ -1,72 +1,113 @@
 <!DOCTYPE html>
-<html><head><title>FEC Data Fetcher</title></head>
+<html><head><title>FEC Data Updater</title></head>
 <body style="font-family:system-ui;max-width:600px;margin:40px auto;padding:20px">
-<h2>FEC Data Fetcher</h2>
-<p>Click the button below. It will fetch all Republican House candidates from the FEC API and download the data as a JSON file. Give that file back to Claude to embed in the dashboard.</p>
-<div id="status" style="padding:12px;background:#f0f0f0;border-radius:6px;margin:16px 0">Ready</div>
-<button id="btn" onclick="go()" style="padding:12px 24px;font-size:16px;background:#a62422;color:white;border:none;border-radius:6px;cursor:pointer">Fetch All 2026 Data</button>
+<h2>FEC Data Updater</h2>
+<p>Fetches all Republican House candidate data from the FEC API and saves it directly to GitHub. The dashboard will load instantly after this runs.</p>
+<div id="status" style="padding:12px;background:#f0f0f0;border-radius:6px;margin:16px 0;white-space:pre-wrap">Ready</div>
+<div style="margin-bottom:12px"><label style="font-size:14px;font-weight:600">GitHub Token (saved locally):</label><br><input id="tok" type="password" style="width:100%;padding:8px;margin-top:4px;border:1px solid #ccc;border-radius:4px" placeholder="Paste your GitHub token here (ghp_... or github_pat_...)" oninput="localStorage.setItem(\x27gh_token\x27,this.value);GH_TOKEN=this.value"></div>
+<button id="btn" onclick="go()" style="padding:12px 24px;font-size:16px;background:#a62422;color:white;border:none;border-radius:6px;cursor:pointer">Update FEC Data Now</button>
 <script>
-var KEY="tPKgQ8WnMDRqrqMzfzLgd6KfmN7t8wMH9WNbcqpJ";
+var FEC_KEY="tPKgQ8WnMDRqrqMzfzLgd6KfmN7t8wMH9WNbcqpJ";
+var GH_TOKEN=localStorage.getItem("gh_token")||"";
 var BASE="https://api.open.fec.gov/v1";
-var status=document.getElementById("status");
+var REPO="TJHolden/fec-dashboard";
+var st=document.getElementById("status");
+
+function log(msg){st.textContent+="\n"+msg;st.scrollTop=st.scrollHeight}
+
+async function fetchPage(cycle,page){
+  var r=await fetch(BASE+"/candidates/totals/?api_key="+FEC_KEY+"&party=REP&office=H&cycle="+cycle+"&election_year="+cycle+"&is_active_candidate=true&sort_by=-receipts&per_page=100&page="+page);
+  return r.json();
+}
+
+async function fetchCycle(cycle){
+  log("Fetching "+cycle+" cycle page 1...");
+  var d=await fetchPage(cycle,1);
+  if(!d.results)return[];
+  var results=d.results;
+  var pages=d.pagination?d.pagination.pages:1;
+  for(var p=2;p<=Math.min(pages,20);p++){
+    log("  page "+p+"/"+pages);
+    var d2=await fetchPage(cycle,p);
+    if(d2.results)results=results.concat(d2.results);
+    await new Promise(function(r){setTimeout(r,250)});
+  }
+  var seen={};
+  results.forEach(function(c){var id=c.candidate_id;if(!seen[id]||(c.receipts||0)>(seen[id].receipts||0))seen[id]=c});
+  var uniq=Object.values(seen);
+  log("  "+uniq.length+" candidates");
+  return uniq;
+}
+
+async function fetchReports(candidates,cycle){
+  log("Fetching "+cycle+" quarterly reports...");
+  var RL={Q1:"Q1",Q2:"Q2",Q3:"Q3",Q4:"Q4","12P":"Pre-Primary","12C":"Pre-Convention","12G":"Pre-General","30G":"Post-General",YE:"Year-End"};
+  var reports={};
+  var total=Math.ceil(candidates.length/20);
+  for(var i=0;i<candidates.length;i+=20){
+    var batch=candidates.slice(i,i+20);
+    var ids=batch.map(function(c){return"candidate_id="+c.candidate_id}).join("&");
+    var bn=Math.floor(i/20)+1;
+    if(bn%5===0||bn===total)log("  reports batch "+bn+"/"+total);
+    try{
+      var r=await fetch(BASE+"/reports/house-senate/?api_key="+FEC_KEY+"&"+ids+"&cycle="+cycle+"&per_page=100&sort_by=-coverage_end_date");
+      var d=await r.json();
+      if(d.results){
+        d.results.forEach(function(rpt){
+          var cid=rpt.candidate_id;
+          if(!reports[cid])reports[cid]=[];
+          var rt=rpt.report_type||"";
+          var year=rpt.coverage_end_date?rpt.coverage_end_date.substring(0,4):"";
+          var label=(RL[rt]||rt)+" "+year;
+          if(!reports[cid].find(function(p){return p.label===label})){
+            reports[cid].push({label:label,raised:rpt.receipts||0,coh:rpt.cash_on_hand_end_period||0});
+          }
+        });
+      }
+    }catch(e){log("  batch error: "+e.message)}
+    await new Promise(function(r){setTimeout(r,400)});
+  }
+  return reports;
+}
+
+async function commitToGitHub(data){
+  log("Committing data.json to GitHub...");
+  var content=btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  // Check if file exists to get its sha
+  var sha=null;
+  try{
+    var r=await fetch("https://api.github.com/repos/"+REPO+"/contents/data.json",{headers:{"Authorization":"Bearer "+GH_TOKEN}});
+    if(r.ok){var d=await r.json();sha=d.sha}
+  }catch(e){}
+  var body={message:"Update FEC data "+new Date().toISOString().split("T")[0],content:content};
+  if(sha)body.sha=sha;
+  var r2=await fetch("https://api.github.com/repos/"+REPO+"/contents/data.json",{
+    method:"PUT",
+    headers:{"Authorization":"Bearer "+GH_TOKEN,"Content-Type":"application/json"},
+    body:JSON.stringify(body)
+  });
+  if(r2.ok){log("Committed to GitHub!")}
+  else{var err=await r2.text();log("GitHub error: "+err)}
+}
 
 async function go(){
   document.getElementById("btn").disabled=true;
-  var allData={};
-  var cycles=[2026,2024,2022,2020];
-  
-  for(var ci=0;ci<cycles.length;ci++){
-    var cycle=cycles[ci];
-    status.textContent="Fetching "+cycle+" cycle candidates page 1...";
-    var r=await fetch(BASE+"/candidates/totals/?api_key="+KEY+"&party=REP&office=H&cycle="+cycle+"&election_year="+cycle+"&is_active_candidate=true&sort_by=-receipts&per_page=100&page=1");
-    var d=await r.json();
-    if(!d.results){status.textContent="Error on "+cycle;continue}
-    var results=d.results;
-    var pages=d.pagination?d.pagination.pages:1;
-    for(var p=2;p<=Math.min(pages,20);p++){
-      status.textContent="Fetching "+cycle+" cycle candidates page "+p+"/"+pages+"...";
-      var r2=await fetch(BASE+"/candidates/totals/?api_key="+KEY+"&party=REP&office=H&cycle="+cycle+"&election_year="+cycle+"&is_active_candidate=true&sort_by=-receipts&per_page=100&page="+p);
-      var d2=await r2.json();
-      if(d2.results)results=results.concat(d2.results);
-      await new Promise(function(r){setTimeout(r,200)});
+  st.textContent="Starting...";if(!GH_TOKEN){st.textContent="Enter your GitHub token above first.";document.getElementById("btn").disabled=false;return}
+  var data={updated:new Date().toISOString(),cycles:{}};
+  for(var cycle of [2026,2024,2022,2020,2018,2016,2014,2012]){
+    data.cycles[cycle]=await fetchCycle(cycle);
+    await new Promise(function(r){setTimeout(r,300)});
+  }
+  // Quarterly reports for 2026 and 2024
+  for(var cy of [2026,2024]){
+    if(data.cycles[cy]&&data.cycles[cy].length){
+      var inc=data.cycles[cy].filter(function(c){return c.incumbent_challenge==="I"||(c.receipts||0)>100000});
+      data.cycles[cy+"_reports"]=await fetchReports(inc,cy);
     }
-    // Deduplicate
-    var seen={};
-    results.forEach(function(c){var id=c.candidate_id;if(!seen[id]||(c.receipts||0)>(seen[id].receipts||0))seen[id]=c});
-    allData[cycle]=Object.values(seen);
-    status.textContent=cycle+" cycle: "+Object.values(seen).length+" candidates loaded.";
   }
-  
-  // Now fetch quarterly reports for 2026
-  status.textContent="Fetching 2026 quarterly reports...";
-  var cands2026=allData[2026]||[];
-  var reports={};
-  for(var i=0;i<cands2026.length;i+=20){
-    var batch=cands2026.slice(i,i+20);
-    var ids=batch.map(function(c){return"candidate_id="+c.candidate_id}).join("&");
-    status.textContent="Quarterly reports batch "+(Math.floor(i/20)+1)+"/"+Math.ceil(cands2026.length/20)+"...";
-    try{
-      var r3=await fetch(BASE+"/reports/house-senate/?api_key="+KEY+"&"+ids+"&cycle=2026&per_page=100&sort_by=-coverage_end_date");
-      var d3=await r3.json();
-      if(d3.results){
-        d3.results.forEach(function(rpt){
-          if(!reports[rpt.candidate_id])reports[rpt.candidate_id]=[];
-          reports[rpt.candidate_id].push({rt:rpt.report_type,receipts:rpt.receipts,coh:rpt.cash_on_hand_end_period,end:rpt.coverage_end_date});
-        });
-      }
-    }catch(e){}
-    await new Promise(function(r){setTimeout(r,400)});
-  }
-  
-  allData.reports_2026=reports;
-  
-  // Download
-  var blob=new Blob([JSON.stringify(allData)],{type:"application/json"});
-  var a=document.createElement("a");
-  a.href=URL.createObjectURL(blob);
-  a.download="fec_data_snapshot.json";
-  a.click();
-  status.textContent="Done! "+Object.keys(allData).filter(function(k){return k!=="reports_2026"}).map(function(k){return k+": "+allData[k].length}).join(", ")+". File downloaded.";
+  await commitToGitHub(data);
+  log("\nDone! Dashboard will load instantly now.");
+  log("Run this again anytime to refresh the data.");
   document.getElementById("btn").disabled=false;
 }
 </script>
