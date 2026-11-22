@@ -421,11 +421,17 @@ function renderCong(list){
   var ml={receipts:"Raised",coh:"Cash on Hand",disbursements:"Spent"}[met];
 
   // Build lookup by district key
+  // Senate candidates (STATE-Sen) get mapped to a state-level lookup too
   var byDist={};
+  var bySenate={};
   list.forEach(function(m){
     var key=m.dist;
     if(!byDist[key])byDist[key]=[];
     byDist[key].push(m);
+    if(m.office==="S"||key.indexOf("-Sen")>=0){
+      if(!bySenate[m.state])bySenate[m.state]=[];
+      bySenate[m.state].push(m);
+    }
   });
 
   // Show loading state then render map
@@ -533,7 +539,7 @@ function renderD3Map(features,byDist,met,mx){
     .attr("class","dist")
     .attr("d",function(k){return path(k.feat)})
     .attr("fill",function(k){
-      var members=byDist[k.key];
+      var members=byDist[k.key]||bySenate[k.abbr];
       if(!members||!members.length)return "#e8e4db";
       return colorScale(members[0][met],mx);
     })
@@ -542,7 +548,7 @@ function renderD3Map(features,byDist,met,mx){
     .style("cursor","pointer")
     .on("mouseenter",function(ev,k){
       d3.select(this).attr("stroke","#c9a227").attr("stroke-width",1.6);
-      var members=byDist[k.key];var tipH="";
+      var members=byDist[k.key]||bySenate[k.abbr];var tipH="";
       if(members&&members.length){var m=members[0];
         tipH='<div style="font-weight:700">'+m.name+'</div><div style="font-size:.68rem;color:var(--d);margin-bottom:2px">'+m.dist+' \u00b7 '+m.type+'</div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Raised</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.receipts)+'</span></div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.coh)+'</span></div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.disbursements)+'</span></div>'}
       else{tipH='<div style="font-weight:700">'+k.key+'</div><div style="color:var(--d)">No Republican candidate</div>'}
