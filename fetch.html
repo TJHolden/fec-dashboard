@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html><head><title>FEC Data Fetcher</title></head>
+<body style="font-family:system-ui;max-width:600px;margin:40px auto;padding:20px">
+<h2>FEC Data Fetcher</h2>
+<p>Click the button below. It will fetch all Republican House candidates from the FEC API and download the data as a JSON file. Give that file back to Claude to embed in the dashboard.</p>
+<div id="status" style="padding:12px;background:#f0f0f0;border-radius:6px;margin:16px 0">Ready</div>
+<button id="btn" onclick="go()" style="padding:12px 24px;font-size:16px;background:#a62422;color:white;border:none;border-radius:6px;cursor:pointer">Fetch All 2026 Data</button>
+<script>
+var KEY="tPKgQ8WnMDRqrqMzfzLgd6KfmN7t8wMH9WNbcqpJ";
+var BASE="https://api.open.fec.gov/v1";
+var status=document.getElementById("status");
+
+async function go(){
+  document.getElementById("btn").disabled=true;
+  var allData={};
+  var cycles=[2026,2024,2022,2020];
+  
+  for(var ci=0;ci<cycles.length;ci++){
+    var cycle=cycles[ci];
+    status.textContent="Fetching "+cycle+" cycle candidates page 1...";
+    var r=await fetch(BASE+"/candidates/totals/?api_key="+KEY+"&party=REP&office=H&cycle="+cycle+"&election_year="+cycle+"&is_active_candidate=true&sort_by=-receipts&per_page=100&page=1");
+    var d=await r.json();
+    if(!d.results){status.textContent="Error on "+cycle;continue}
+    var results=d.results;
+    var pages=d.pagination?d.pagination.pages:1;
+    for(var p=2;p<=Math.min(pages,20);p++){
+      status.textContent="Fetching "+cycle+" cycle candidates page "+p+"/"+pages+"...";
+      var r2=await fetch(BASE+"/candidates/totals/?api_key="+KEY+"&party=REP&office=H&cycle="+cycle+"&election_year="+cycle+"&is_active_candidate=true&sort_by=-receipts&per_page=100&page="+p);
+      var d2=await r2.json();
+      if(d2.results)results=results.concat(d2.results);
+      await new Promise(function(r){setTimeout(r,200)});
+    }
+    // Deduplicate
+    var seen={};
+    results.forEach(function(c){var id=c.candidate_id;if(!seen[id]||(c.receipts||0)>(seen[id].receipts||0))seen[id]=c});
+    allData[cycle]=Object.values(seen);
+    status.textContent=cycle+" cycle: "+Object.values(seen).length+" candidates loaded.";
+  }
+  
+  // Now fetch quarterly reports for 2026
+  status.textContent="Fetching 2026 quarterly reports...";
+  var cands2026=allData[2026]||[];
+  var reports={};
+  for(var i=0;i<cands2026.length;i+=20){
+    var batch=cands2026.slice(i,i+20);
+    var ids=batch.map(function(c){return"candidate_id="+c.candidate_id}).join("&");
+    status.textContent="Quarterly reports batch "+(Math.floor(i/20)+1)+"/"+Math.ceil(cands2026.length/20)+"...";
+    try{
+      var r3=await fetch(BASE+"/reports/house-senate/?api_key="+KEY+"&"+ids+"&cycle=2026&per_page=100&sort_by=-coverage_end_date");
+      var d3=await r3.json();
+      if(d3.results){
+        d3.results.forEach(function(rpt){
+          if(!reports[rpt.candidate_id])reports[rpt.candidate_id]=[];
+          reports[rpt.candidate_id].push({rt:rpt.report_type,receipts:rpt.receipts,coh:rpt.cash_on_hand_end_period,end:rpt.coverage_end_date});
+        });
+      }
+    }catch(e){}
+    await new Promise(function(r){setTimeout(r,400)});
+  }
+  
+  allData.reports_2026=reports;
+  
+  // Download
+  var blob=new Blob([JSON.stringify(allData)],{type:"application/json"});
+  var a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download="fec_data_snapshot.json";
+  a.click();
+  status.textContent="Done! "+Object.keys(allData).filter(function(k){return k!=="reports_2026"}).map(function(k){return k+": "+allData[k].length}).join(", ")+". File downloaded.";
+  document.getElementById("btn").disabled=false;
+}
+</script>
+</body>
+</html>
