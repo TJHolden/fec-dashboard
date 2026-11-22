@@ -80,6 +80,7 @@ const GRID={AK:[0,0],ME:[0,10],WI:[1,5],VT:[1,9],NH:[1,10],WA:[2,0],ID:[2,1],MT:
 
 var CYCLE=2026;
 var CYCLES=[2028,2026,2024,2022,2020,2018,2016,2014,2012];
+var qtrCycleInit=2026;
 var REGIONS={
   "Northeast":["CT","ME","MA","NH","NJ","NY","PA","RI","VT"],
   "Midwest":["IL","IN","IA","KS","MI","MN","MO","NE","ND","OH","SD","WI"],
@@ -757,7 +758,9 @@ function loadFEC(){
       var uniq=Object.values(seen);
       ALL=uniq.map(function(c){
         var nm=c.name||"";var parts=nm.split(",");var name=parts.length>=2?(parts[1].trim().split(" ")[0]+" "+parts[0].trim()).replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()}).replace(/  +/g," "):nm;
-        var dist=c.office==="S"?c.state+"-Sen":c.state+"-"+String(c.district_number||c.district||"AL").padStart(2,"0");
+        var dnum=c.district_number!=null?c.district_number:c.district;
+        var dstr=(dnum===0||dnum==="0"||dnum==null||dnum==="")?"00":String(dnum).padStart(2,"0");
+        var dist=c.office==="S"?c.state+"-Sen":c.state+"-"+dstr;
         var num=function(v){var n=parseFloat(v);return isNaN(n)?0:n};
         return{name:name,state:c.state,sn:SN[c.state]||c.state,dist:dist,office:c.office,
           type:c.incumbent_challenge==="I"?"Incumbent":c.incumbent_challenge==="C"?"Challenger":"Open",
