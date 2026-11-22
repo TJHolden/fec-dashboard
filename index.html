@@ -451,14 +451,29 @@ function renderCong(list){
   document.getElementById("view").innerHTML+=lowHtml;
 }
 
+// Fix winding order for TIGERweb geometries (matches election-results app)
+function fixPoly(rings){
+  rings=(rings||[]).filter(function(r){return Array.isArray(r)&&r.length>=4});
+  if(!rings.length)return null;
+  if(d3.geoArea({type:"Polygon",coordinates:rings})>2*Math.PI)rings=rings.map(function(r){return r.slice().reverse()});
+  if(d3.geoArea({type:"Polygon",coordinates:rings})>2*Math.PI)rings=[rings[0].slice().reverse()].filter(function(r){return d3.geoArea({type:"Polygon",coordinates:[r]})<=2*Math.PI});
+  return rings.length?rings:null;
+}
+function fixGeom(g){
+  if(!g)return null;
+  if(g.type==="Polygon"){var c=fixPoly(g.coordinates);return c?{type:"Polygon",coordinates:c}:null}
+  if(g.type==="MultiPolygon"){var cs=(g.coordinates||[]).map(fixPoly).filter(Boolean);return cs.length?{type:"MultiPolygon",coordinates:cs}:null}
+  return null;
+}
+
 function renderD3Map(features,byDist,met,mx){
   var container=document.getElementById("distMap");
   if(!container)return;
   container.innerHTML="";
   var isState=features[0]&&features[0]._isState;
   var projected=districtGeo._projected;
+  var W=975,H=610;
 
-  // Build lookup: for state-level, aggregate by state FIPS
   var byFips={};
   if(isState){
     ALL.forEach(function(m){
@@ -467,16 +482,35 @@ function renderD3Map(features,byDist,met,mx){
     });
   }
 
+  // Fix geometries and filter for district-level data
+  var validFeatures=features;
+  if(!isState){
+    validFeatures=features.map(function(f){
+      var g=fixGeom(f.geometry);
+      if(!g)return null;
+      return{type:"Feature",geometry:g,id:f.id,properties:f.properties};
+    }).filter(Boolean);
+    validFeatures=validFeatures.filter(function(f){
+      var gid=f.id||"";
+      if(/ZZ$/i.test(gid))return false;
+      if(gid.substring(0,2)==="11")return false;
+      return true;
+    });
+  }
+
   var svg=d3.select(container).append("svg")
-    .attr("viewBox",projected?"0 0 975 610":"0 0 960 600")
+    .attr("viewBox","0 0 "+W+" "+H)
     .attr("width","100%")
     .style("display","block");
 
-  var path=projected?d3.geoPath():d3.geoPath(d3.geoAlbersUsa().fitSize([960,600],{type:"FeatureCollection",features:features}));
+  var fc={type:"FeatureCollection",features:validFeatures};
+  var proj=projected?null:d3.geoAlbersUsa().fitExtent([[0,0],[W,H]],fc);
+  var path=projected?d3.geoPath():d3.geoPath(proj);
 
-  svg.selectAll("path")
-    .data(features)
+  svg.selectAll("path.dist")
+    .data(validFeatures)
     .enter().append("path")
+    .attr("class","dist")
     .attr("d",path)
     .attr("fill",function(d){
       if(isState){
@@ -490,11 +524,11 @@ function renderD3Map(features,byDist,met,mx){
       if(!members||!members.length)return "#e8e4db";
       return colorScale(members[0][met],mx);
     })
-    .attr("stroke",isState?"#8a8070":"#b8b0a0")
-    .attr("stroke-width",isState?1:0.3)
+    .attr("stroke",isState?"#8a8070":"rgba(255,255,255,.55)")
+    .attr("stroke-width",isState?1:0.4)
     .style("cursor","pointer")
     .on("mouseenter",function(ev,d){
-      d3.select(this).attr("stroke","#14213d").attr("stroke-width",isState?2:1.5);
+      d3.select(this).attr("stroke","#14213d").attr("stroke-width",1.6);
       var tipH="";
       if(isState){
         var sd=byFips[d.id];
@@ -505,8 +539,7 @@ function renderD3Map(features,byDist,met,mx){
           tipH='<div style="font-weight:700">'+(SN[st]||st)+' ('+sd.members.length+' GOP)</div>'
             +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Raised</span><span style="font-family:var(--m);font-weight:600">'+fmt(totalR)+'</span></div>'
             +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fmt(totalC)+'</span></div>'
-            +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fmt(totalS)+'</span></div>'
-            ;
+            +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fmt(totalS)+'</span></div>';
         }
       }else{
         var key=distIdToKey(d.id);
@@ -520,46 +553,33 @@ function renderD3Map(features,byDist,met,mx){
             +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.disbursements)+'</span></div>';
         }
       }
-      if(tipH){
-        tip.style.display="block";tip.innerHTML=tipH;
-        var x=ev.clientX+12,y=ev.clientY+12;
-        if(x+260>window.innerWidth)x=ev.clientX-260;
-        if(y+140>window.innerHeight)y=ev.clientY-140;
-        tip.style.left=x+"px";tip.style.top=y+"px";
-      }
+      if(tipH){tip.style.display="block";tip.innerHTML=tipH;var x=ev.clientX+12,y=ev.clientY+12;if(x+260>window.innerWidth)x=ev.clientX-260;if(y+140>window.innerHeight)y=ev.clientY-140;tip.style.left=x+"px";tip.style.top=y+"px"}
     })
-    .on("mousemove",function(ev){
-      var x=ev.clientX+12,y=ev.clientY+12;
-      if(x+260>window.innerWidth)x=ev.clientX-260;
-      if(y+140>window.innerHeight)y=ev.clientY-140;
-      tip.style.left=x+"px";tip.style.top=y+"px";
-    })
-    .on("mouseleave",function(){
-      d3.select(this).attr("stroke",isState?"#8a8070":"#b8b0a0").attr("stroke-width",isState?1:0.3);
-      tip.style.display="none";
-    })
+    .on("mousemove",function(ev){var x=ev.clientX+12,y=ev.clientY+12;if(x+260>window.innerWidth)x=ev.clientX-260;if(y+140>window.innerHeight)y=ev.clientY-140;tip.style.left=x+"px";tip.style.top=y+"px"})
+    .on("mouseleave",function(){d3.select(this).attr("stroke",isState?"#8a8070":"rgba(255,255,255,.55)").attr("stroke-width",isState?1:0.4);tip.style.display="none"})
     .on("click",function(ev,d){
-      if(isState){
-        var st=FIPS[d.id];
-        if(st){
-          var detail=document.getElementById("congDetail");
-          if(!detail){detail=document.createElement("div");detail.id="congDetail";var card=document.getElementById("distMap").closest(".card");card.parentNode.insertBefore(detail,card.nextSibling)}
-          renderNatDetail(st);
-          var el=document.getElementById("congDetail");
-          if(el){var panel=document.querySelector("[style*='border-left:3px']");if(panel)el.appendChild(panel)}
-        }
-      }else{
-        var key=distIdToKey(d.id);
-        if(key){
-          var st=key.substring(0,2);
-          var detail=document.getElementById("congDetail");
-          if(!detail){detail=document.createElement("div");detail.id="congDetail";var card=document.getElementById("distMap").closest(".card");card.parentNode.insertBefore(detail,card.nextSibling)}
-          renderNatDetail(st);
-          var el=document.getElementById("congDetail");
-          if(el){var panel=document.querySelector("[style*='border-left:3px']");if(panel)el.appendChild(panel)}
-        }
+      var st=isState?FIPS[d.id]:(distIdToKey(d.id)?distIdToKey(d.id).substring(0,2):null);
+      if(st){
+        var detail=document.getElementById("congDetail");
+        if(!detail){detail=document.createElement("div");detail.id="congDetail";var card=document.getElementById("distMap").closest(".card");card.parentNode.insertBefore(detail,card.nextSibling)}
+        renderNatDetail(st);
+        var el=document.getElementById("congDetail");
+        if(el){var panel=document.querySelector("[style*='border-left:3px']");if(panel)el.appendChild(panel)}
       }
     });
+
+  // Draw state outlines on top for clean borders
+  if(!isState){
+    var stMesh=topojson.mesh(STATES_TOPO,STATES_TOPO.objects.states,function(a,b){return a!==b});
+    var stPath=d3.geoPath(d3.geoAlbersUsa().fitExtent([[0,0],[W,H]],fc));
+    svg.append("path")
+      .datum(stMesh)
+      .attr("fill","none")
+      .attr("stroke","rgba(50,50,50,.55)")
+      .attr("stroke-width",0.9)
+      .attr("d",stPath)
+      .style("pointer-events","none");
+  }
 }
 
 var qtrSelState="ALL";
