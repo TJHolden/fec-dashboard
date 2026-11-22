@@ -18,19 +18,24 @@ async function fetchJSON(url) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function fetchCycle(cycle) {
-  const d = await fetchJSON(`${BASE}/candidates/totals/?api_key=${FEC_KEY}&party=REP&office=H&cycle=${cycle}&election_year=${cycle}&is_active_candidate=true&sort_by=-receipts&per_page=100&page=1`);
+  // Don't filter by is_active_candidate - it drops people after elections
+  const url = `${BASE}/candidates/totals/?api_key=${FEC_KEY}&party=REP&office=H&cycle=${cycle}&sort_by=-receipts&per_page=100&page=1`;
+  const d = await fetchJSON(url);
   if (!d.results) return [];
   let results = d.results;
   const pages = d.pagination ? d.pagination.pages : 1;
   for (let p = 2; p <= Math.min(pages, 20); p++) {
     await sleep(400);
     try {
-      const d2 = await fetchJSON(`${BASE}/candidates/totals/?api_key=${FEC_KEY}&party=REP&office=H&cycle=${cycle}&election_year=${cycle}&is_active_candidate=true&sort_by=-receipts&per_page=100&page=${p}`);
+      const d2 = await fetchJSON(`${BASE}/candidates/totals/?api_key=${FEC_KEY}&party=REP&office=H&cycle=${cycle}&sort_by=-receipts&per_page=100&page=${p}`);
       if (d2.results) results = results.concat(d2.results);
     } catch (e) {}
   }
   const seen = {};
-  results.forEach(c => { if (!seen[c.candidate_id] || (c.receipts||0) > (seen[c.candidate_id].receipts||0)) seen[c.candidate_id] = c; });
+  results.forEach(c => { 
+    const id = c.candidate_id;
+    if (!seen[id] || (c.receipts||0) > (seen[id].receipts||0)) seen[id] = c; 
+  });
   return Object.values(seen);
 }
 
@@ -48,12 +53,10 @@ export default async function handler(req, res) {
   try {
     const candidates = await fetchCycle(cycle);
     const data = { updated: new Date().toISOString(), cycle, candidates };
-    
     cache[cacheKey] = { ts: Date.now(), data };
     res.setHeader("X-Cache", "MISS");
     res.json(data);
   } catch (e) {
-    // If we have stale cache, return it
     if (cache[cacheKey]) {
       res.setHeader("X-Cache", "STALE");
       return res.json(cache[cacheKey].data);
