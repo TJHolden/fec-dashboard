@@ -362,20 +362,25 @@ var districtLoading=false;
 
 function loadDistricts(cb){
   if(districtGeo){cb(districtGeo);return}
-  // Primary: TIGERweb API (works when hosted as a web page)
-  var TIGER="https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Legislative/MapServer/0/query";
-  fetch(TIGER+"?where=1%3D1&outFields=GEOID,STATE,CD,BASENAME&geometryType=esriGeometryEnvelope&returnGeometry=true&f=geojson&outSR=4326")
+  // Load all congressional districts from TIGERweb (same source as election-results app)
+  var NAT_CD_URL="https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Legislative/MapServer/0/query?where=1%3D1&outFields=GEOID,BASENAME,STATE&outSR=4326&f=geojson&maxAllowableOffset=0.02&geometryPrecision=3";
+  fetch(NAT_CD_URL)
     .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()})
     .then(function(gj){
       if(!gj.features||!gj.features.length)throw new Error("Empty");
       districtGeo=gj.features.map(function(f){
-        f.id=f.properties.GEOID||((f.properties.STATE||"")+(f.properties.CD||f.properties.BASENAME||"00"));
+        var geoid=f.properties.GEOID||"";
+        var stFips=geoid.substring(0,2)||f.properties.STATE||"";
+        var dist=geoid.substring(2)||f.properties.BASENAME||"00";
+        if(dist==="00"||dist.toLowerCase()==="al")dist="00";
+        f.id=stFips+String(dist).padStart(2,"0");
         return f;
       });
       districtGeo._projected=false;
       cb(districtGeo);
     })
-    .catch(function(){
+    .catch(function(err){
+      console.log("TIGERweb failed:",err,". Falling back to state boundaries.");
       // Fallback: embedded states TopoJSON
       var features=topojson.feature(STATES_TOPO,STATES_TOPO.objects.states).features;
       features.forEach(function(f){f._isState=true});
