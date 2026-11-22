@@ -87,8 +87,8 @@ var REGIONS={
   "West":["AK","AZ","CA","CO","HI","ID","MT","NV","NM","OR","UT","WA","WY"]
 };
 let ALL=[],CHS=[];
-function fmt(n){return n==null?"\u2014":"$"+Math.round(n).toLocaleString("en-US")}
-function fK(n){if(n>=1e6)return"$"+(n/1e6).toFixed(1)+"M";if(n>=1e3)return"$"+(n/1e3).toFixed(0)+"K";return"$"+Math.round(n)}
+function fmt(n){if(n==null||isNaN(n))return"\u2014";return"$"+Math.round(n).toLocaleString("en-US")}
+function fK(n){if(n==null||isNaN(n))return"\u2014";if(n>=1e6)return"$"+(n/1e6).toFixed(1)+"M";if(n>=1e3)return"$"+(n/1e3).toFixed(0)+"K";return"$"+Math.round(n)}
 function titleCase(s){return s.toLowerCase().replace(/(?:^|\s)\S/g,function(c){return c.toUpperCase()})}
 function fmtName(raw){if(!raw)return"Unknown";var p=raw.split(",");if(p.length>=2)return titleCase(p[1].trim().split(" ")[0])+" "+titleCase(p[0].trim());return titleCase(raw)}
 function setStatus(cls,html){var e=document.getElementById("sts");e.className="sts on "+cls;e.innerHTML=html}
@@ -780,11 +780,12 @@ function loadFEC(){
       ALL=uniq.map(function(c){
         var nm=c.name||"";var parts=nm.split(",");var name=parts.length>=2?(parts[1].trim().split(" ")[0]+" "+parts[0].trim()).replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()}).replace(/  +/g," "):nm;
         var dist=c.office==="S"?c.state+"-Sen":c.state+"-"+String(c.district_number||c.district||"AL").padStart(2,"0");
+        var num=function(v){var n=parseFloat(v);return isNaN(n)?0:n};
         return{name:name,state:c.state,sn:SN[c.state]||c.state,dist:dist,office:c.office,
           type:c.incumbent_challenge==="I"?"Incumbent":c.incumbent_challenge==="C"?"Challenger":"Open",
-          receipts:c.receipts||0,coh:c.cash_on_hand_end_period||c.last_cash_on_hand_end_period||0,
-          disbursements:c.disbursements||0,indiv:c.individual_contributions||c.individual_itemized_contributions||0,
-          pac:c.other_political_committee_contributions||0,candidateId:c.candidate_id,periods:[]};
+          receipts:num(c.receipts),coh:num(c.cash_on_hand_end_period)||num(c.last_cash_on_hand_end_period),
+          disbursements:num(c.disbursements),indiv:num(c.individual_contributions)||num(c.individual_itemized_contributions),
+          pac:num(c.other_political_committee_contributions),candidateId:c.candidate_id,periods:[]};
       }).sort(function(a,b){return b.receipts-a.receipts});
       setStatus("ok",ALL.length+" Republican candidates loaded from FEC API ("+CYCLE+" cycle).");
       render();
