@@ -287,13 +287,18 @@ function renderNatTiles(sd,met,mx){
 }
 
 
+var detailSortCol="dist";
+var detailSortAsc=true;
+var detailState="";
+function detailSort(col){detailSortAsc=sortOn(col,detailSortCol,detailSortAsc);detailSortCol=col;renderNatDetail(detailState)}
+
 function renderNatDetail(st){
+  detailState=st;
   var container=document.getElementById("natDetail");
   if(!container){
     var el=document.getElementById("view");
     var div=document.createElement("div");
     div.id="natDetail";
-    // Insert after the map card but before the charts
     var charts=el.querySelector(".g2");
     if(charts)el.insertBefore(div,charts);
     else el.appendChild(div);
@@ -301,8 +306,10 @@ function renderNatDetail(st){
   }
   var members=ALL.filter(function(m){return m.state===st});
   if(!members.length){container.innerHTML="";return}
-  members.sort(function(a,b){return a.dist<b.dist?-1:1});
+  members=sortMembers(members,detailSortCol,detailSortAsc);
   var stateName=SN[st]||st;
+
+  function dh(col,label,extra){var isA=detailSortCol===col;return '<th class="sortable'+(col!=="dist"&&col!=="name"?" r":"")+'" '+(extra||"")+' onclick="detailSort(\''+col+'\')">'+label+'<span class="arrow'+(isA?" on":"")+'"> '+(isA?(detailSortAsc?"&#9650;":"&#9660;"):"&#9650;")+'</span></th>'}
 
   var rows="";
   members.forEach(function(m){
@@ -319,9 +326,9 @@ function renderNatDetail(st){
       +'</tr>';
   });
 
-  container.innerHTML='<div class="card" style="border-left:3px solid var(--red)"><div class="ch"><span>'+stateName+' ('+st+') \u2014 '+members.length+' race'+(members.length>1?"s":"")+'</span><button class="btn btn-ghost" onclick="natSelState=null;document.getElementById(\'natDetail\').innerHTML=\'\'" style="font-size:.7rem;padding:4px 10px">\u2715 Close</button></div>'
+  container.innerHTML='<div class="card" style="border-left:3px solid var(--red)"><div class="ch"><span>'+stateName+' ('+st+') \u2014 '+members.length+' race'+(members.length>1?"s":"")+'</span><button class="btn btn-ghost" onclick="natSelState=null;document.getElementById(\'natDetail\').innerHTML=\'\'" style="font-size:.7rem;padding:4px 10px">&#10005; Close</button></div>'
     +'<div class="cb"><div class="tw"><table>'
-    +'<thead><tr><th>Dist.</th><th style="color:var(--red)">Republican</th><th class="r" style="color:var(--red)">Raised</th><th class="r" style="color:var(--red)">COH</th>'
+    +'<thead><tr>'+dh("dist","District")+dh("name","Republican",'style="color:var(--red)"')+dh("receipts","Raised",'style="color:var(--red)"')+dh("coh","COH",'style="color:var(--red)"')
     +'<th style="border-left:2px solid var(--b);padding-left:12px;color:var(--blu)">Opponent</th><th class="r" style="color:var(--blu)">Raised</th><th class="r" style="color:var(--blu)">COH</th>'
     +'<th class="r">COH Adv.</th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table></div></div></div>';
@@ -345,6 +352,10 @@ function showOnMap(st){
     });
   },200);
 }
+
+var congSortCol="coh";
+var congSortAsc=true;
+function congSort(col){congSortAsc=sortOn(col,congSortCol,congSortAsc);congSortCol=col;render()}
 
 var districtGeo=null;
 var districtLoading=false;
@@ -425,10 +436,12 @@ function renderCong(list){
     renderD3Map(features,byDist,met,mx);
   });
 
-  // Also show low COH table below
-  var low=list.filter(function(m){return m.type==="Incumbent"}).sort(function(a,b){return a.coh-b.coh}).slice(0,15);
-  var lowHtml='<div class="card"><div class="ch">Lowest COH \u2014 Incumbents</div><div class="cb"><div class="tw"><table><thead><tr><th>Dist.</th><th>Name</th><th class="r">Raised</th><th class="r">COH</th><th class="r">Spent</th></tr></thead><tbody>';
-  low.forEach(function(m){lowHtml+='<tr><td><span class="bd">'+m.dist+'</span></td><td>'+m.name+'</td><td class="mo">'+fmt(m.receipts)+'</td><td class="mo" style="color:'+(m.coh<250000?"var(--red)":"inherit")+';font-weight:'+(m.coh<250000?700:400)+'">'+fmt(m.coh)+'</td><td class="mo">'+fmt(m.disbursements)+'</td></tr>'});
+  // Also show low COH table below — sortable
+  var incs=list.filter(function(m){return m.type==="Incumbent"});
+  incs=sortMembers(incs,congSortCol,congSortAsc);
+  function ch(col,label){var isA=congSortCol===col;return '<th class="sortable'+(col!=="dist"&&col!=="name"?" r":"")+'" onclick="congSort(\''+col+'\')">'+label+'<span class="arrow'+(isA?" on":"")+'"> '+(isA?(congSortAsc?"&#9650;":"&#9660;"):"&#9650;")+'</span></th>'}
+  var lowHtml='<div class="card"><div class="ch">All Incumbents<small>'+incs.length+' members</small></div><div class="cb"><div class="tw"><table><thead><tr>'+ch("dist","District")+ch("name","Name")+ch("receipts","Raised")+ch("coh","COH")+ch("disbursements","Spent")+'</tr></thead><tbody>';
+  incs.forEach(function(m){lowHtml+='<tr style="cursor:pointer" onclick="showOnMap(\''+m.state+'\')" title="Click to show on map"><td><span class="bd">'+m.dist+'</span></td><td>'+m.name+'</td><td class="mo">'+fmt(m.receipts)+'</td><td class="mo" style="color:'+(m.coh<250000?"var(--red)":"inherit")+';font-weight:'+(m.coh<250000?700:400)+'">'+fmt(m.coh)+'</td><td class="mo">'+fmt(m.disbursements)+'</td></tr>'});
   lowHtml+='</tbody></table></div></div></div>';
   document.getElementById("view").innerHTML+=lowHtml;
 }
