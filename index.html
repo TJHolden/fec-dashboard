@@ -765,15 +765,24 @@ function loadFEC(){
     }).sort(function(a,b){return b.receipts-a.receipts});
     // Load quarterly reports if included
     var RL={Q1:"Q1",Q2:"Q2",Q3:"Q3",Q4:"Q4","12P":"Pre-Primary","12C":"Pre-Convention","12G":"Pre-General","30G":"Post-General",YE:"Year-End"};
+    // Load quarterly reports from data.json (pre-built, has 2 years of history)
     if(d.reports){
-      ALL.forEach(function(m){
-        var rpts=d.reports[m.candidateId];
-        if(rpts)m.periods=rpts;
-      });
+      ALL.forEach(function(m){var rpts=d.reports[m.candidateId];if(rpts)m.periods=rpts});
     }
     var cached=d.updated?(" Data: "+new Date(d.updated).toLocaleDateString()):"";
     setStatus("ok",ALL.length+" candidates ("+CYCLE+" cycle)."+cached);
     render();
+    // Also try loading quarterly from data.json if API didn't include them
+    if(!d.reports){
+      fetch("data.json").then(function(r){return r.json()}).then(function(dj){
+        var rKey=CYCLE+"_reports";
+        var reports=dj.cycles?dj.cycles[rKey]:null;
+        if(reports){
+          ALL.forEach(function(m){var rpts=reports[m.candidateId];if(rpts&&!m.periods.length)m.periods=rpts});
+          render();
+        }
+      }).catch(function(){});
+    }
   }).catch(function(err){
     // Fallback: try data.json
     setStatus("ok","Trying backup data source...");
