@@ -587,7 +587,7 @@ function renderQtr(list){
   var withQ=list.filter(function(m){return m.periods&&m.periods.length>0});
   var sd={};withQ.forEach(function(m){if(!sd[m.state])sd[m.state]={code:m.state,name:m.sn,n:0,members:[]};sd[m.state].n++;sd[m.state].members.push(m)});
   var stS=Object.values(sd).sort(function(a,b){return a.name<b.name?-1:1});
-  if(!withQ.length){document.getElementById("view").innerHTML='<div class="card"><div class="cb" style="text-align:center;padding:30px;color:var(--d)">Quarterly data is loading in the background. Reports load in batches after candidates. This can take 15-30 seconds.</div></div>';return}
+  if(!withQ.length){document.getElementById("view").innerHTML='<div class="card"><div class="cb" style="text-align:center;padding:30px;color:var(--d)">No quarterly report data available for this cycle.</div></div>';return}
   var totalN=withQ.length;
   var side='<div class="md-side-search"><input type="text" placeholder="Search..." oninput="filterQtrSide(this.value)"></div>';
   side+='<div class="md-item'+(qtrSelState==="ALL"?" active":"")+'" onclick="qtrSelState=\'ALL\';render()"><span style="font-weight:700">National</span><span class="md-count">'+totalN+'</span></div>';
@@ -851,7 +851,7 @@ function fetchFECData(cb){
       setStatus("ok",ALL.length+" Republican candidates loaded. Loading quarterly reports...");
       render();
       // Now fetch quarterly reports for incumbents
-      loadQuarterlyReports();
+      // quarterly reports already loaded from API
     })
     .catch(function(err){
       setStatus("err","Could not reach the FEC API. Host this file on a web server (GitHub Pages, Netlify, etc.) for live data.");
