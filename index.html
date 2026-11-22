@@ -736,33 +736,46 @@ function loadDemo(){
 var API_KEY="tPKgQ8WnMDRqrqMzfzLgd6KfmN7t8wMH9WNbcqpJ";
 var BASE_URL="https://api.open.fec.gov/v1";
 
+var VERCEL_API="https://fec-dashboard-inky.vercel.app/api/fec-data";
 var DATA_CACHE={};
 
 function loadFEC(){
-  // Load from pre-built data.json (instant) with FEC API as fallback
-  if(DATA_CACHE._loaded){
-    loadFromCache();
-    return;
-  }
-  setStatus("ok","Loading data...");
-  fetch("data.json").then(function(r){
-    if(!r.ok)throw new Error("No data.json");
+  setStatus("ok","Loading "+CYCLE+" cycle...");
+  fetch(VERCEL_API+"?cycle="+CYCLE).then(function(r){
+    if(!r.ok)throw new Error("HTTP "+r.status);
     return r.json();
   }).then(function(d){
-    DATA_CACHE=d;
-    DATA_CACHE._loaded=true;
-    loadFromCache();
-  }).catch(function(){
-    // Fallback to live FEC API
-    setStatus("ok","Loading "+CYCLE+" cycle from FEC API...");
-    ALL=[];render();
-    fetchFECData(function(candidates){
-      if(candidates&&candidates.length){
-        ALL=candidates;
-        setStatus("ok",ALL.length+" candidates loaded from FEC API ("+CYCLE+" cycle).");
-        render();
-        loadQuarterlyReports();
-      }
+    var num=function(v){var n=parseFloat(v);return isNaN(n)?0:n};
+    ALL=(d.candidates||[]).map(function(c){
+      var nm=c.name||"";var parts=nm.split(",");
+      var name=parts.length>=2?(parts[1].trim().split(" ")[0]+" "+parts[0].trim()).replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()}).replace(/  +/g," "):nm;
+      var dnum=c.district_number!=null?c.district_number:c.district;
+      var dstr=(dnum===0||dnum==="0"||dnum==null||dnum==="")?"00":String(dnum).padStart(2,"0");
+      return{name:name,state:c.state,sn:SN[c.state]||c.state,dist:c.state+"-"+dstr,office:c.office||"H",
+        type:c.incumbent_challenge==="I"?"Incumbent":c.incumbent_challenge==="C"?"Challenger":"Open",
+        receipts:num(c.receipts),coh:num(c.cash_on_hand_end_period)||num(c.last_cash_on_hand_end_period),
+        disbursements:num(c.disbursements),indiv:num(c.individual_contributions)||num(c.individual_itemized_contributions),
+        pac:num(c.other_political_committee_contributions),candidateId:c.candidate_id,periods:[]};
+    }).sort(function(a,b){return b.receipts-a.receipts});
+    // Load quarterly reports if included
+    var RL={Q1:"Q1",Q2:"Q2",Q3:"Q3",Q4:"Q4","12P":"Pre-Primary","12C":"Pre-Convention","12G":"Pre-General","30G":"Post-General",YE:"Year-End"};
+    if(d.reports){
+      ALL.forEach(function(m){
+        var rpts=d.reports[m.candidateId];
+        if(rpts)m.periods=rpts;
+      });
+    }
+    var cached=d.updated?(" Data: "+new Date(d.updated).toLocaleDateString()):"";
+    setStatus("ok",ALL.length+" candidates ("+CYCLE+" cycle)."+cached);
+    render();
+  }).catch(function(err){
+    // Fallback: try data.json
+    setStatus("ok","Trying backup data source...");
+    fetch("data.json").then(function(r){return r.json()}).then(function(d){
+      DATA_CACHE=d;loadFromCache();
+    }).catch(function(){
+      setStatus("err","Could not load data. Check your connection.");
+      ALL=[];render();
     });
   });
 }
