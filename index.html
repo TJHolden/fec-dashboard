@@ -743,57 +743,52 @@ var API_KEY="tPKgQ8WnMDRqrqMzfzLgd6KfmN7t8wMH9WNbcqpJ";
 var BASE_URL="https://api.open.fec.gov/v1";
 
 var VERCEL_API="https://fec-dashboard-inky.vercel.app/api/fec-data";
-var DATA_CACHE={};
+var DATA_CACHE=null;
+
+function parseFECCandidates(raw){
+  var num=function(v){var n=parseFloat(v);return isNaN(n)?0:n};
+  return raw.map(function(c){
+    var nm=c.name||"";var parts=nm.split(",");
+    var name=parts.length>=2?(parts[1].trim().split(" ")[0]+" "+parts[0].trim()).replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()}).replace(/  +/g," "):nm;
+    var dnum=c.district_number!=null?c.district_number:c.district;
+    var dstr=(dnum===0||dnum==="0"||dnum==null||dnum==="")?"00":String(dnum).padStart(2,"0");
+    return{name:name,state:c.state,sn:SN[c.state]||c.state,dist:c.state+"-"+dstr,office:c.office||"H",
+      type:c.incumbent_challenge==="I"?"Incumbent":c.incumbent_challenge==="C"?"Challenger":"Open",
+      receipts:num(c.receipts),coh:num(c.cash_on_hand_end_period)||num(c.last_cash_on_hand_end_period),
+      disbursements:num(c.disbursements),indiv:num(c.individual_contributions)||num(c.individual_itemized_contributions),
+      pac:num(c.other_political_committee_contributions),candidateId:c.candidate_id,periods:[]};
+  }).sort(function(a,b){return b.receipts-a.receipts});
+}
 
 function loadFEC(){
   setStatus("ok","Loading "+CYCLE+" cycle...");
-  fetch(VERCEL_API+"?cycle="+CYCLE).then(function(r){
-    if(!r.ok)throw new Error("HTTP "+r.status);
-    return r.json();
-  }).then(function(d){
-    var num=function(v){var n=parseFloat(v);return isNaN(n)?0:n};
-    ALL=(d.candidates||[]).map(function(c){
-      var nm=c.name||"";var parts=nm.split(",");
-      var name=parts.length>=2?(parts[1].trim().split(" ")[0]+" "+parts[0].trim()).replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()}).replace(/  +/g," "):nm;
-      var dnum=c.district_number!=null?c.district_number:c.district;
-      var dstr=(dnum===0||dnum==="0"||dnum==null||dnum==="")?"00":String(dnum).padStart(2,"0");
-      return{name:name,state:c.state,sn:SN[c.state]||c.state,dist:c.state+"-"+dstr,office:c.office||"H",
-        type:c.incumbent_challenge==="I"?"Incumbent":c.incumbent_challenge==="C"?"Challenger":"Open",
-        receipts:num(c.receipts),coh:num(c.cash_on_hand_end_period)||num(c.last_cash_on_hand_end_period),
-        disbursements:num(c.disbursements),indiv:num(c.individual_contributions)||num(c.individual_itemized_contributions),
-        pac:num(c.other_political_committee_contributions),candidateId:c.candidate_id,periods:[]};
-    }).sort(function(a,b){return b.receipts-a.receipts});
-    // Load quarterly reports if included
-    var RL={Q1:"Q1",Q2:"Q2",Q3:"Q3",Q4:"Q4","12P":"Pre-Primary","12C":"Pre-Convention","12G":"Pre-General","30G":"Post-General",YE:"Year-End"};
-    // Load quarterly reports from data.json (pre-built, has 2 years of history)
-    if(d.reports){
-      ALL.forEach(function(m){var rpts=d.reports[m.candidateId];if(rpts)m.periods=rpts});
-    }
-    var cached=d.updated?(" Data: "+new Date(d.updated).toLocaleDateString()):"";
-    setStatus("ok",ALL.length+" candidates ("+CYCLE+" cycle)."+cached);
+  // data.json first (complete: 1071 candidates + quarterly), Vercel API refreshes in background
+  function loadDJ(dj){
+    DATA_CACHE=dj;
+    var cycleData=dj.cycles?dj.cycles[CYCLE]:null;
+    if(!cycleData||!cycleData.length)return false;
+    ALL=parseFECCandidates(cycleData);
+    var rKey=CYCLE+"_reports";
+    var reports=dj.cycles?dj.cycles[rKey]:null;
+    if(reports){ALL.forEach(function(m){var rpts=reports[m.candidateId];if(rpts)m.periods=rpts})}
+    var updated=dj.updated?new Date(dj.updated).toLocaleDateString():"";
+    setStatus("ok",ALL.length+" candidates ("+CYCLE+" cycle). Data: "+updated);
     render();
-    // Also try loading quarterly from data.json if API didn't include them
-    if(!d.reports){
-      fetch("data.json").then(function(r){return r.json()}).then(function(dj){
-        var rKey=CYCLE+"_reports";
-        var reports=dj.cycles?dj.cycles[rKey]:null;
-        if(reports){
-          ALL.forEach(function(m){var rpts=reports[m.candidateId];if(rpts&&!m.periods.length)m.periods=rpts});
-          render();
-        }
-      }).catch(function(){});
-    }
-  }).catch(function(err){
-    // Fallback: try data.json
-    setStatus("ok","Trying backup data source...");
-    fetch("data.json").then(function(r){return r.json()}).then(function(d){
-      DATA_CACHE=d;loadFromCache();
-    }).catch(function(){
-      setStatus("err","Could not load data. Check your connection.");
-      ALL=[];render();
-    });
+    return true;
+  }
+  if(DATA_CACHE&&loadDJ(DATA_CACHE))return;
+  fetch("data.json").then(function(r){if(!r.ok)throw new Error();return r.json()}).then(function(dj){
+    if(!loadDJ(dj))throw new Error("no cycle");
+  }).catch(function(){
+    // Fallback: Vercel API
+    fetch(VERCEL_API+"?cycle="+CYCLE).then(function(r){return r.json()}).then(function(d){
+      ALL=parseFECCandidates(d.candidates||[]);
+      setStatus("ok",ALL.length+" candidates ("+CYCLE+" cycle).");
+      render();
+    }).catch(function(){setStatus("err","Could not load data.");ALL=[];render()});
   });
 }
+
 
 function loadFromCache(){
   var SN_local=SN;
