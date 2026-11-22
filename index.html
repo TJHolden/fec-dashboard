@@ -19,7 +19,7 @@ body{font-family:var(--f);background:var(--bg);color:var(--t);line-height:1.5}
 select,input[type=text]{font-family:var(--f);font-size:.8rem;padding:7px 10px;border:1px solid var(--b);border-radius:var(--r);background:var(--s2);color:var(--t);outline:none}select:focus,input:focus{border-color:var(--blu)}input[type=text]{flex:1;min-width:140px}
 .btn{font-family:var(--f);font-size:.8rem;font-weight:600;padding:7px 14px;border:none;border-radius:var(--r);cursor:pointer;white-space:nowrap}.btn:hover{opacity:.88}.btn:disabled{opacity:.35;cursor:not-allowed}
 .btn-load{background:var(--red);color:#fff}.btn-ghost{background:var(--s2);color:var(--t);border:1px solid var(--b)}
-.sts{margin-top:8px;padding:7px 10px;border-radius:var(--r);font-size:.78rem;display:none}.sts.on{display:block}.sts.ok{background:var(--gL);color:var(--grn)}.sts.err{background:var(--rL);color:var(--red)}
+.sts{padding:9px 12px;border-radius:var(--r);font-size:.82rem;font-weight:500;display:none}.sts.on{display:block}.sts.ok{background:var(--s);border:1px solid var(--b);color:var(--t)}.sts.err{background:var(--rL);color:var(--red)}
 .prog{margin-top:8px;display:none}.prog.on{display:block}.prog-bar{height:4px;background:var(--s2);border-radius:2px;overflow:hidden}.prog-fill{height:100%;background:var(--red);border-radius:2px;transition:width .3s}.prog-text{font-size:.7rem;color:var(--d);margin-top:2px}
 .kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:8px;margin-bottom:12px}.kpi{background:var(--s);border:1px solid var(--b);border-radius:var(--r);padding:10px 12px;box-shadow:var(--sh)}.kv{font-family:var(--m);font-size:1.1rem;font-weight:700;color:var(--red)}.kl{font-size:.68rem;color:var(--d);margin-top:1px}
 .tabs{display:flex;gap:2px;margin-bottom:10px;background:var(--s2);border-radius:var(--r);padding:3px}.tab{font-size:.76rem;font-weight:600;padding:7px 14px;border:none;border-radius:4px;cursor:pointer;background:transparent;color:var(--d);font-family:var(--f)}.tab:hover{color:var(--t)}.tab.on{background:var(--s);color:var(--t);box-shadow:var(--sh)}
@@ -771,8 +771,8 @@ function loadFEC(){
     var rKey=CYCLE+"_reports";
     var reports=dj.cycles?dj.cycles[rKey]:null;
     if(reports){ALL.forEach(function(m){var rpts=reports[m.candidateId];if(rpts)m.periods=rpts})}
-    var updated=dj.updated?new Date(dj.updated).toLocaleDateString():"";
-    setStatus("ok",ALL.length+" candidates ("+CYCLE+" cycle). Data: "+updated);
+    var updated=dj.updated?new Date(dj.updated).toLocaleDateString("en-US",{month:"numeric",day:"numeric",year:"numeric"}):"";
+    setStatus("ok",ALL.length+" candidates ("+CYCLE+" cycle). Data as of "+updated+".");
     render();
     return true;
   }
