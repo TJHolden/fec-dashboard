@@ -452,15 +452,18 @@ function renderCong(list){
 }
 
 // Fix winding order for TIGERweb geometries (matches election-results app)
-function fixPoly(rings){
-  rings=(rings||[]).filter(function(r){return Array.isArray(r)&&r.length>=4});
-  if(!rings.length)return null;
-  if(d3.geoArea({type:"Polygon",coordinates:rings})>2*Math.PI)rings=rings.map(function(r){return r.slice().reverse()});
-  if(d3.geoArea({type:"Polygon",coordinates:rings})>2*Math.PI)rings=[rings[0].slice().reverse()].filter(function(r){return d3.geoArea({type:"Polygon",coordinates:[r]})<=2*Math.PI});
-  return rings.length?rings:null;
-}
-function fixGeom(g){
+// Fix district geometry winding (exact match of election-results app)
+function fixDistrictGeom(g){
   if(!g)return null;
+  function fixPoly(rings){
+    rings=(rings||[]).filter(function(r){return Array.isArray(r)&&r.length>=4});
+    if(!rings.length)return null;
+    if(d3.geoArea({type:"Polygon",coordinates:rings})>2*Math.PI)
+      rings=rings.map(function(r){return r.slice().reverse()});
+    if(d3.geoArea({type:"Polygon",coordinates:rings})>2*Math.PI)
+      rings=[rings[0].slice().reverse()].filter(function(r){return d3.geoArea({type:"Polygon",coordinates:[r]})<=2*Math.PI});
+    return rings.length?rings:null;
+  }
   if(g.type==="Polygon"){var c=fixPoly(g.coordinates);return c?{type:"Polygon",coordinates:c}:null}
   if(g.type==="MultiPolygon"){var cs=(g.coordinates||[]).map(fixPoly).filter(Boolean);return cs.length?{type:"MultiPolygon",coordinates:cs}:null}
   return null;
@@ -474,112 +477,88 @@ function renderD3Map(features,byDist,met,mx){
   var projected=districtGeo._projected;
   var W=975,H=610;
 
-  var byFips={};
+  // State-level fallback
   if(isState){
+    var byFips={};
     ALL.forEach(function(m){
       var fips=Object.keys(FIPS).find(function(k){return FIPS[k]===m.state});
       if(fips){if(!byFips[fips])byFips[fips]={members:[],total:0};byFips[fips].members.push(m);byFips[fips].total+=m[met]}
     });
+    var svg=d3.select(container).append("svg").attr("viewBox","0 0 "+W+" "+H).attr("width","100%").style("display","block");
+    var path=d3.geoPath(); // pre-projected, identity transform
+    svg.selectAll("path").data(features).enter().append("path")
+      .attr("d",path)
+      .attr("fill",function(d){var sd=byFips[d.id];if(!sd||!sd.members.length)return "#e8e4db";return colorScale(sd.total/sd.members.length,mx)})
+      .attr("stroke","#8a8070").attr("stroke-width",0.9).style("cursor","pointer")
+      .on("mouseenter",function(ev,d){
+        d3.select(this).attr("stroke","#14213d").attr("stroke-width",2);
+        var sd=byFips[d.id];var st=FIPS[d.id]||"";var tipH="";
+        if(sd&&sd.members.length){var tR=0,tC=0,tS=0;sd.members.forEach(function(m){tR+=m.receipts;tC+=m.coh;tS+=m.disbursements});
+          tipH='<div style="font-weight:700">'+(SN[st]||st)+' ('+sd.members.length+' GOP)</div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Raised</span><span style="font-family:var(--m);font-weight:600">'+fmt(tR)+'</span></div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fmt(tC)+'</span></div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fmt(tS)+'</span></div>'}
+        if(tipH){tip.style.display="block";tip.innerHTML=tipH;var x=ev.clientX+12,y=ev.clientY+12;if(x+260>window.innerWidth)x=ev.clientX-260;if(y+140>window.innerHeight)y=ev.clientY-140;tip.style.left=x+"px";tip.style.top=y+"px"}
+      })
+      .on("mousemove",function(ev){var x=ev.clientX+12,y=ev.clientY+12;if(x+260>window.innerWidth)x=ev.clientX-260;if(y+140>window.innerHeight)y=ev.clientY-140;tip.style.left=x+"px";tip.style.top=y+"px"})
+      .on("mouseleave",function(){d3.select(this).attr("stroke","#8a8070").attr("stroke-width",0.9);tip.style.display="none"})
+      .on("click",function(ev,d){var st=FIPS[d.id];if(st){var det=document.getElementById("congDetail");if(!det){det=document.createElement("div");det.id="congDetail";var card=document.getElementById("distMap").closest(".card");card.parentNode.insertBefore(det,card.nextSibling)}renderNatDetail(st);var el=document.getElementById("congDetail");if(el){var panel=document.querySelector("[style*='border-left:3px']");if(panel)el.appendChild(panel)}}});
+    return;
   }
 
-  // Fix geometries and filter for district-level data
-  var validFeatures=features;
-  if(!isState){
-    validFeatures=features.map(function(f){
-      var g=fixGeom(f.geometry);
-      if(!g)return null;
-      return{type:"Feature",geometry:g,id:f.id,properties:f.properties};
-    }).filter(Boolean);
-    validFeatures=validFeatures.filter(function(f){
-      var gid=f.id||"";
-      if(/ZZ$/i.test(gid))return false;
-      if(gid.substring(0,2)==="11")return false;
-      return true;
-    });
-  }
+  // District-level: process features exactly like election-results app
+  var kept=[];
+  features.forEach(function(f){
+    var g=fixDistrictGeom(f.geometry);
+    if(!g)return;
+    var geoid=String(f.properties.GEOID||f.id||"");
+    if(/ZZ$/i.test(geoid))return; // skip non-voting
+    var stFips=String(f.properties.STATE||geoid.substring(0,2)||"").padStart(2,"0");
+    var ab=FIPS[stFips];
+    if(!ab||ab==="DC")return;
+    var raw=String(f.properties.BASENAME||"").trim();
+    var dist=/^\d+$/.test(raw)?String(+raw):/at[- ]large/i.test(raw)||/00$/.test(geoid)?"AL":raw;
+    if(!dist)return;
+    var distPad=dist==="AL"?"00":String(dist).padStart(2,"0");
+    var key=ab+"-"+distPad;
+    kept.push({feat:{type:"Feature",geometry:g,properties:f.properties},abbr:ab,dist:dist,key:key});
+  });
 
-  var svg=d3.select(container).append("svg")
-    .attr("viewBox","0 0 "+W+" "+H)
-    .attr("width","100%")
-    .style("display","block");
+  var fc={type:"FeatureCollection",features:kept.map(function(k){return k.feat})};
+  var proj=d3.geoAlbersUsa().fitExtent([[0,0],[W,H]],fc);
+  var path=d3.geoPath(proj);
 
-  var fc={type:"FeatureCollection",features:validFeatures};
-  var proj=projected?null:d3.geoAlbersUsa().fitExtent([[0,0],[W,H]],fc);
-  var path=projected?d3.geoPath():d3.geoPath(proj);
+  var svg=d3.select(container).append("svg").attr("viewBox","0 0 "+W+" "+H).attr("width","100%").attr("height","auto").style("display","block");
 
-  svg.selectAll("path.dist")
-    .data(validFeatures)
-    .enter().append("path")
+  // Draw districts
+  svg.selectAll("path.dist").data(kept).enter().append("path")
     .attr("class","dist")
-    .attr("d",path)
-    .attr("fill",function(d){
-      if(isState){
-        var sd=byFips[d.id];
-        if(!sd||!sd.members.length)return "#e8e4db";
-        return colorScale(sd.total/sd.members.length,mx);
-      }
-      var key=distIdToKey(d.id);
-      if(!key)return "#e8e4db";
-      var members=byDist[key];
+    .attr("d",function(k){return path(k.feat)})
+    .attr("fill",function(k){
+      var members=byDist[k.key];
       if(!members||!members.length)return "#e8e4db";
       return colorScale(members[0][met],mx);
     })
-    .attr("stroke",isState?"#8a8070":"rgba(255,255,255,.55)")
-    .attr("stroke-width",isState?1:0.4)
+    .attr("stroke","rgba(255,255,255,.55)")
+    .attr("stroke-width",0.4)
     .style("cursor","pointer")
-    .on("mouseenter",function(ev,d){
-      d3.select(this).attr("stroke","#14213d").attr("stroke-width",1.6);
-      var tipH="";
-      if(isState){
-        var sd=byFips[d.id];
-        if(sd&&sd.members.length){
-          var st=FIPS[d.id]||"";
-          var totalR=0,totalC=0,totalS=0;
-          sd.members.forEach(function(m){totalR+=m.receipts;totalC+=m.coh;totalS+=m.disbursements});
-          tipH='<div style="font-weight:700">'+(SN[st]||st)+' ('+sd.members.length+' GOP)</div>'
-            +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Raised</span><span style="font-family:var(--m);font-weight:600">'+fmt(totalR)+'</span></div>'
-            +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fmt(totalC)+'</span></div>'
-            +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fmt(totalS)+'</span></div>';
-        }
-      }else{
-        var key=distIdToKey(d.id);
-        var members=key?byDist[key]:null;
-        if(members&&members.length){
-          var m=members[0];
-          tipH='<div style="font-weight:700">'+m.name+'</div>'
-            +'<div style="font-size:.68rem;color:var(--d);margin-bottom:2px">'+m.dist+' \u00b7 '+m.type+'</div>'
-            +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Raised</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.receipts)+'</span></div>'
-            +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.coh)+'</span></div>'
-            +'<div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.disbursements)+'</span></div>';
-        }
-      }
-      if(tipH){tip.style.display="block";tip.innerHTML=tipH;var x=ev.clientX+12,y=ev.clientY+12;if(x+260>window.innerWidth)x=ev.clientX-260;if(y+140>window.innerHeight)y=ev.clientY-140;tip.style.left=x+"px";tip.style.top=y+"px"}
+    .on("mouseenter",function(ev,k){
+      d3.select(this).attr("stroke","#c9a227").attr("stroke-width",1.6);
+      var members=byDist[k.key];var tipH="";
+      if(members&&members.length){var m=members[0];
+        tipH='<div style="font-weight:700">'+m.name+'</div><div style="font-size:.68rem;color:var(--d);margin-bottom:2px">'+m.dist+' \u00b7 '+m.type+'</div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Raised</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.receipts)+'</span></div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.coh)+'</span></div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.disbursements)+'</span></div>'}
+      else{tipH='<div style="font-weight:700">'+k.key+'</div><div style="color:var(--d)">No Republican candidate</div>'}
+      tip.style.display="block";tip.innerHTML=tipH;var x=ev.clientX+12,y=ev.clientY+12;if(x+260>window.innerWidth)x=ev.clientX-260;if(y+140>window.innerHeight)y=ev.clientY-140;tip.style.left=x+"px";tip.style.top=y+"px";
     })
     .on("mousemove",function(ev){var x=ev.clientX+12,y=ev.clientY+12;if(x+260>window.innerWidth)x=ev.clientX-260;if(y+140>window.innerHeight)y=ev.clientY-140;tip.style.left=x+"px";tip.style.top=y+"px"})
-    .on("mouseleave",function(){d3.select(this).attr("stroke",isState?"#8a8070":"rgba(255,255,255,.55)").attr("stroke-width",isState?1:0.4);tip.style.display="none"})
-    .on("click",function(ev,d){
-      var st=isState?FIPS[d.id]:(distIdToKey(d.id)?distIdToKey(d.id).substring(0,2):null);
-      if(st){
-        var detail=document.getElementById("congDetail");
-        if(!detail){detail=document.createElement("div");detail.id="congDetail";var card=document.getElementById("distMap").closest(".card");card.parentNode.insertBefore(detail,card.nextSibling)}
-        renderNatDetail(st);
-        var el=document.getElementById("congDetail");
-        if(el){var panel=document.querySelector("[style*='border-left:3px']");if(panel)el.appendChild(panel)}
-      }
+    .on("mouseleave",function(){d3.select(this).attr("stroke","rgba(255,255,255,.55)").attr("stroke-width",0.4);tip.style.display="none"})
+    .on("click",function(ev,k){
+      var det=document.getElementById("congDetail");
+      if(!det){det=document.createElement("div");det.id="congDetail";var card=document.getElementById("distMap").closest(".card");card.parentNode.insertBefore(det,card.nextSibling)}
+      renderNatDetail(k.abbr);
+      var el=document.getElementById("congDetail");
+      if(el){var panel=document.querySelector("[style*='border-left:3px']");if(panel)el.appendChild(panel)}
     });
 
-  // Draw state outlines on top for clean borders
-  if(!isState){
-    var stMesh=topojson.mesh(STATES_TOPO,STATES_TOPO.objects.states,function(a,b){return a!==b});
-    var stPath=d3.geoPath(d3.geoAlbersUsa().fitExtent([[0,0],[W,H]],fc));
-    svg.append("path")
-      .datum(stMesh)
-      .attr("fill","none")
-      .attr("stroke","rgba(50,50,50,.55)")
-      .attr("stroke-width",0.9)
-      .attr("d",stPath)
-      .style("pointer-events","none");
-  }
+  // Count rendered
+  container.insertAdjacentHTML("beforeend",'<div style="font-size:11px;color:var(--d);margin-top:6px;text-align:center">'+kept.length+' districts \u00b7 hover for details \u00b7 click to open state</div>');
 }
 
 var qtrSelState="ALL";
