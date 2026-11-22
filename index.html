@@ -539,7 +539,7 @@ function renderD3Map(features,byDist,met,mx){
     .attr("class","dist")
     .attr("d",function(k){return path(k.feat)})
     .attr("fill",function(k){
-      var members=byDist[k.key]||bySenate[k.abbr];
+      var members=byDist[k.key];
       if(!members||!members.length)return "#e8e4db";
       return colorScale(members[0][met],mx);
     })
@@ -548,7 +548,7 @@ function renderD3Map(features,byDist,met,mx){
     .style("cursor","pointer")
     .on("mouseenter",function(ev,k){
       d3.select(this).attr("stroke","#c9a227").attr("stroke-width",1.6);
-      var members=byDist[k.key]||bySenate[k.abbr];var tipH="";
+      var members=byDist[k.key];var tipH="";
       if(members&&members.length){var m=members[0];
         tipH='<div style="font-weight:700">'+m.name+'</div><div style="font-size:.68rem;color:var(--d);margin-bottom:2px">'+m.dist+' \u00b7 '+m.type+'</div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Raised</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.receipts)+'</span></div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.coh)+'</span></div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.disbursements)+'</span></div>'}
       else{tipH='<div style="font-weight:700">'+k.key+'</div><div style="color:var(--d)">No Republican candidate</div>'}
@@ -752,7 +752,7 @@ function loadFEC(){
       for(var p=2;p<=Math.min(total,20);p++){
         promises.push(fetch(BASE_URL+"/candidates/totals/?api_key="+API_KEY+"&party=REP&office=H&cycle="+CYCLE+"&election_year="+CYCLE+"&is_active_candidate=true&sort_by=-receipts&per_page=100&page="+p).then(function(r){return r.json()}));
       }
-      promises.push(fetch(BASE_URL+"/candidates/totals/?api_key="+API_KEY+"&party=REP&office=S&cycle="+CYCLE+"&election_year="+CYCLE+"&is_active_candidate=true&sort_by=-receipts&per_page=100").then(function(r){return r.json()}));
+      // House only - no Senate
       return Promise.all(promises).then(function(pages){
         pages.forEach(function(pg){if(pg.results)allResults=allResults.concat(pg.results)});
         return allResults;
@@ -766,7 +766,7 @@ function loadFEC(){
         var nm=c.name||"";var parts=nm.split(",");var name=parts.length>=2?(parts[1].trim().split(" ")[0]+" "+parts[0].trim()).replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()}).replace(/  +/g," "):nm;
         var dnum=c.district_number!=null?c.district_number:c.district;
         var dstr=(dnum===0||dnum==="0"||dnum==null||dnum==="")?"00":String(dnum).padStart(2,"0");
-        var dist=c.office==="S"?c.state+"-Sen":c.state+"-"+dstr;
+        var dist=c.state+"-"+dstr;
         var num=function(v){var n=parseFloat(v);return isNaN(n)?0:n};
         return{name:name,state:c.state,sn:SN[c.state]||c.state,dist:dist,office:c.office,
           type:c.incumbent_challenge==="I"?"Incumbent":c.incumbent_challenge==="C"?"Challenger":"Open",
