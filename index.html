@@ -766,14 +766,49 @@ function loadFEC(){
           disbursements:num(c.disbursements),indiv:num(c.individual_contributions)||num(c.individual_itemized_contributions),
           pac:num(c.other_political_committee_contributions),candidateId:c.candidate_id,periods:[]};
       }).sort(function(a,b){return b.receipts-a.receipts});
-      setStatus("ok",ALL.length+" Republican candidates loaded from FEC API ("+CYCLE+" cycle).");
+      setStatus("ok",ALL.length+" Republican candidates loaded. Loading quarterly reports...");
       render();
+      // Now fetch quarterly reports for incumbents
+      loadQuarterlyReports();
     })
     .catch(function(err){
       setStatus("err","Could not reach the FEC API. Host this file on a web server (GitHub Pages, Netlify, etc.) for live data.");
       ALL=[];
       render();
     });
+}
+
+function loadQuarterlyReports(){
+  var candidates=ALL.filter(function(m){return m.candidateId&&(m.type==="Incumbent"||m.receipts>100000)});
+  if(!candidates.length)return;
+  var batches=[];
+  for(var i=0;i<candidates.length;i+=10){batches.push(candidates.slice(i,i+10))}
+  var done=0;
+  var RL={"Q1":"Q1","Q2":"Q2","Q3":"Q3","Q4":"Q4","12P":"Pre-Primary","12C":"Pre-Convention","12G":"Pre-General","30G":"Post-General","YE":"Year-End"};
+  function doBatch(batch){
+    var ids=batch.map(function(m){return m.candidateId});
+    var url=BASE_URL+"/reports/house-senate/?api_key="+API_KEY+"&candidate_id="+ids.join("&candidate_id=")+"&cycle="+CYCLE+"&per_page=100&sort_by=-coverage_end_date";
+    return fetch(url).then(function(r){return r.json()}).then(function(d){
+      if(!d.results)return;
+      d.results.forEach(function(rpt){
+        var cid=rpt.candidate_id;
+        var member=ALL.find(function(m){return m.candidateId===cid});
+        if(!member)return;
+        var rt=rpt.report_type||"";
+        var year=rpt.coverage_end_date?rpt.coverage_end_date.substring(0,4):"";
+        var label=(RL[rt]||rt)+" "+year;
+        if(member.periods.find(function(p){return p.label===label}))return;
+        member.periods.push({label:label,raised:parseFloat(rpt.receipts)||0,coh:parseFloat(rpt.cash_on_hand_end_period)||0});
+      });
+      done++;
+      if(done%5===0||done===batches.length){
+        setStatus("ok",ALL.length+" candidates, "+done+"/"+batches.length+" report batches ("+CYCLE+").");
+        render();
+      }
+    }).catch(function(){done++});
+  }
+  var delay=0;
+  batches.forEach(function(batch){setTimeout(function(){doBatch(batch)},delay);delay+=350});
 }
 
 if(isClaudePreview){
