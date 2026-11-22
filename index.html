@@ -690,7 +690,7 @@ function renderCycleBtns(){updateCycleLabel();
     b.className="tab"+(c===CYCLE?" on":"");
     b.textContent=c;
     b.style.cssText="font-size:.72rem;padding:5px 10px;min-width:44px";
-    b.onclick=function(){CYCLE=c;renderCycleBtns();render()};
+    b.onclick=function(){CYCLE=c;renderCycleBtns();if(isClaudePreview){render()}else{loadFEC()}};
     el.appendChild(b);
   });
 }
@@ -709,36 +709,33 @@ function loadDemo(){
   render();
 }
 
-if(isClaudePreview){
-  loadDemo();
-}else{
-  // Hosted or opened locally — try FEC API, show empty state if unavailable
-  var API_KEY="tPKgQ8WnMDRqrqMzfzLgd6KfmN7t8wMH9WNbcqpJ";
-  var base="https://api.open.fec.gov/v1";
-  setStatus("ok","Connecting to FEC API...");
+var API_KEY="tPKgQ8WnMDRqrqMzfzLgd6KfmN7t8wMH9WNbcqpJ";
+var BASE_URL="https://api.open.fec.gov/v1";
+
+function loadFEC(){
+  ALL=[];
+  render();
+  setStatus("ok","Loading "+CYCLE+" cycle from FEC API...");
   var ctrl=new AbortController();
-  setTimeout(function(){ctrl.abort()},5000);
-  fetch(base+"/candidates/totals/?api_key="+API_KEY+"&party=REP&office=H&cycle="+CYCLE+"&election_year="+CYCLE+"&is_active_candidate=true&sort_by=-receipts&per_page=100",{signal:ctrl.signal})
+  setTimeout(function(){ctrl.abort()},8000);
+  fetch(BASE_URL+"/candidates/totals/?api_key="+API_KEY+"&party=REP&office=H&cycle="+CYCLE+"&election_year="+CYCLE+"&is_active_candidate=true&sort_by=-receipts&per_page=100",{signal:ctrl.signal})
     .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()})
     .then(function(d){
       if(!d.results||!d.results.length)throw new Error("No results");
-      // Load all pages
       var total=d.pagination?d.pagination.pages:1;
       var allResults=d.results;
-      setStatus("ok","Found "+d.pagination.count+" candidates. Loading...");
+      setStatus("ok","Found "+d.pagination.count+" candidates. Loading all pages...");
       var promises=[];
       for(var p=2;p<=Math.min(total,10);p++){
-        promises.push(fetch(base+"/candidates/totals/?api_key="+API_KEY+"&party=REP&office=H&cycle="+CYCLE+"&election_year="+CYCLE+"&is_active_candidate=true&sort_by=-receipts&per_page=100&page="+p).then(function(r){return r.json()}));
+        promises.push(fetch(BASE_URL+"/candidates/totals/?api_key="+API_KEY+"&party=REP&office=H&cycle="+CYCLE+"&election_year="+CYCLE+"&is_active_candidate=true&sort_by=-receipts&per_page=100&page="+p).then(function(r){return r.json()}));
       }
-      // Also fetch Senate
-      promises.push(fetch(base+"/candidates/totals/?api_key="+API_KEY+"&party=REP&office=S&cycle="+CYCLE+"&election_year="+CYCLE+"&is_active_candidate=true&sort_by=-receipts&per_page=100").then(function(r){return r.json()}));
+      promises.push(fetch(BASE_URL+"/candidates/totals/?api_key="+API_KEY+"&party=REP&office=S&cycle="+CYCLE+"&election_year="+CYCLE+"&is_active_candidate=true&sort_by=-receipts&per_page=100").then(function(r){return r.json()}));
       return Promise.all(promises).then(function(pages){
         pages.forEach(function(pg){if(pg.results)allResults=allResults.concat(pg.results)});
         return allResults;
       });
     })
     .then(function(results){
-      // Deduplicate
       var seen={};
       results.forEach(function(c){var id=c.candidate_id;if(!seen[id]||(c.receipts||0)>(seen[id].receipts||0))seen[id]=c});
       var uniq=Object.values(seen).filter(function(c){return(c.receipts||0)>5000||c.incumbent_challenge==="I"});
@@ -755,9 +752,16 @@ if(isClaudePreview){
       render();
     })
     .catch(function(err){
-      setStatus("err","Could not reach the FEC API. Host this file on a web server (GitHub Pages, Netlify, etc.) for live data. Opening from a local file is blocked by browser security (CORS).");
+      setStatus("err","Could not reach the FEC API. Host this file on a web server (GitHub Pages, Netlify, etc.) for live data.");
+      ALL=[];
       render();
     });
+}
+
+if(isClaudePreview){
+  loadDemo();
+}else{
+  loadFEC();
 }
 </script>
 </body>
