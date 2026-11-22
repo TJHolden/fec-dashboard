@@ -578,7 +578,7 @@ function renderQtr(list){
   var withQ=list.filter(function(m){return m.periods&&m.periods.length>0});
   var sd={};withQ.forEach(function(m){if(!sd[m.state])sd[m.state]={code:m.state,name:m.sn,n:0,members:[]};sd[m.state].n++;sd[m.state].members.push(m)});
   var stS=Object.values(sd).sort(function(a,b){return a.name<b.name?-1:1});
-  if(!withQ.length){document.getElementById("view").innerHTML='<div class="card"><div class="cb" style="text-align:center;padding:30px;color:var(--d)">No quarterly data available.</div></div>';return}
+  if(!withQ.length){document.getElementById("view").innerHTML='<div class="card"><div class="cb" style="text-align:center;padding:30px;color:var(--d)">Quarterly data is loading in the background. Reports load in batches after candidates. This can take 15-30 seconds.</div></div>';return}
   var totalN=withQ.length;
   var side='<div class="md-side-search"><input type="text" placeholder="Search..." oninput="filterQtrSide(this.value)"></div>';
   side+='<div class="md-item'+(qtrSelState==="ALL"?" active":"")+'" onclick="qtrSelState=\'ALL\';render()"><span style="font-weight:700">National</span><span class="md-count">'+totalN+'</span></div>';
@@ -682,11 +682,12 @@ function mkCh(id,type,labels,datasets,extra){
   CHS.push(new Chart(ctx.getContext("2d"),{type:type,data:{labels:labels,datasets:datasets},options:o}));
 }
 
-function exportCSV(){
+function exportCSV(useAll){
+  var list=useAll?ALL:getFiltered();
   var h=["District","Name","State","Type","Receipts","COH","Disbursements","Individual","PAC"];
-  var rows=ALL.map(function(m){return[m.dist,'"'+m.name+'"',m.sn,m.type,Math.round(m.receipts),Math.round(m.coh),Math.round(m.disbursements),Math.round(m.indiv),Math.round(m.pac)]});
+  var rows=list.map(function(m){return[m.dist,'"'+m.name+'"',m.sn,m.type,Math.round(m.receipts),Math.round(m.coh),Math.round(m.disbursements),Math.round(m.indiv),Math.round(m.pac)]});
   var csv=h.join(",")+"\n"+rows.map(function(r){return r.join(",")}).join("\n");
-  var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="republican_fec_2026.csv";a.click();
+  var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="republican_fec_"+CYCLE+".csv";a.click();
 }
 
 
@@ -786,16 +787,24 @@ function loadFEC(){
     });
 }
 
-function loadQuarterlyReports(){
+function loadQuarterlyForCycle(cy){
+  // Clear existing periods and reload for the new cycle
+  ALL.forEach(function(m){m.periods=[]});
+  qtrCycle=cy;
+  loadQuarterlyReports(cy);
+}
+
+function loadQuarterlyReports(overrideCycle){
+  var useCycle=overrideCycle||CYCLE;
   var candidates=ALL.filter(function(m){return m.candidateId&&(m.type==="Incumbent"||m.receipts>100000)});
   if(!candidates.length)return;
   var batches=[];
-  for(var i=0;i<candidates.length;i+=10){batches.push(candidates.slice(i,i+10))}
+  for(var i=0;i<candidates.length;i+=20){batches.push(candidates.slice(i,i+20))}
   var done=0;
   var RL={"Q1":"Q1","Q2":"Q2","Q3":"Q3","Q4":"Q4","12P":"Pre-Primary","12C":"Pre-Convention","12G":"Pre-General","30G":"Post-General","YE":"Year-End"};
   function doBatch(batch){
     var ids=batch.map(function(m){return m.candidateId});
-    var url=BASE_URL+"/reports/house-senate/?api_key="+API_KEY+"&candidate_id="+ids.join("&candidate_id=")+"&cycle="+CYCLE+"&per_page=100&sort_by=-coverage_end_date";
+    var url=BASE_URL+"/reports/house-senate/?api_key="+API_KEY+"&candidate_id="+ids.join("&candidate_id=")+"&cycle="+useCycle+"&per_page=100&sort_by=-coverage_end_date";
     return fetch(url).then(function(r){return r.json()}).then(function(d){
       if(!d.results)return;
       d.results.forEach(function(rpt){
@@ -810,13 +819,13 @@ function loadQuarterlyReports(){
       });
       done++;
       if(done%5===0||done===batches.length){
-        setStatus("ok",ALL.length+" candidates, "+done+"/"+batches.length+" report batches ("+CYCLE+").");
+        setStatus("ok",ALL.length+" candidates, "+done+"/"+batches.length+" report batches ("+useCycle+" cycle).");
         render();
       }
     }).catch(function(){done++});
   }
   var delay=0;
-  batches.forEach(function(batch){setTimeout(function(){doBatch(batch)},delay);delay+=350});
+  batches.forEach(function(batch){setTimeout(function(){doBatch(batch)},delay);delay+=600});
 }
 
 if(isClaudePreview){
