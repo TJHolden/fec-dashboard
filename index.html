@@ -595,6 +595,26 @@ function renderCong(list){
 }
 
 // Fix winding order for TIGERweb geometries (matches election-results app)
+var CITIES=[
+{n:"New York",lat:40.71,lng:-74.01},{n:"Los Angeles",lat:34.05,lng:-118.24},{n:"Chicago",lat:41.88,lng:-87.63},
+{n:"Houston",lat:29.76,lng:-95.37},{n:"Phoenix",lat:33.45,lng:-112.07},{n:"Philadelphia",lat:39.95,lng:-75.17},
+{n:"San Antonio",lat:29.42,lng:-98.49},{n:"San Diego",lat:32.72,lng:-117.16},{n:"Dallas",lat:32.78,lng:-96.80},
+{n:"Austin",lat:30.27,lng:-97.74},{n:"Jacksonville",lat:30.33,lng:-81.66},{n:"San Jose",lat:37.34,lng:-121.89},
+{n:"Fort Worth",lat:32.76,lng:-97.33},{n:"Columbus",lat:39.96,lng:-82.99},{n:"Charlotte",lat:35.23,lng:-80.84},
+{n:"Indianapolis",lat:39.77,lng:-86.16},{n:"San Francisco",lat:37.77,lng:-122.42},{n:"Seattle",lat:47.61,lng:-122.33},
+{n:"Denver",lat:39.74,lng:-104.99},{n:"Nashville",lat:36.16,lng:-86.78},{n:"Oklahoma City",lat:35.47,lng:-97.52},
+{n:"Washington DC",lat:38.91,lng:-77.04},{n:"Las Vegas",lat:36.17,lng:-115.14},{n:"Portland",lat:45.52,lng:-122.68},
+{n:"Memphis",lat:35.15,lng:-90.05},{n:"Louisville",lat:38.25,lng:-85.76},{n:"Baltimore",lat:39.29,lng:-76.61},
+{n:"Milwaukee",lat:43.04,lng:-87.91},{n:"Albuquerque",lat:35.08,lng:-106.65},{n:"Tucson",lat:32.22,lng:-110.97},
+{n:"Atlanta",lat:33.75,lng:-84.39},{n:"Sacramento",lat:38.58,lng:-121.49},{n:"Kansas City",lat:39.10,lng:-94.58},
+{n:"Miami",lat:25.76,lng:-80.19},{n:"Raleigh",lat:35.78,lng:-78.64},{n:"Omaha",lat:41.26,lng:-95.94},
+{n:"Minneapolis",lat:44.98,lng:-93.27},{n:"Cleveland",lat:41.50,lng:-81.69},{n:"Tampa",lat:27.95,lng:-82.46},
+{n:"Pittsburgh",lat:40.44,lng:-80.00},{n:"St. Louis",lat:38.63,lng:-90.20},{n:"Cincinnati",lat:39.10,lng:-84.51},
+{n:"Orlando",lat:28.54,lng:-81.38},{n:"New Orleans",lat:29.95,lng:-90.07},{n:"Detroit",lat:42.33,lng:-83.05},
+{n:"Salt Lake City",lat:40.76,lng:-111.89},{n:"Boston",lat:42.36,lng:-71.06},{n:"Boise",lat:43.62,lng:-116.21},
+{n:"Des Moines",lat:41.59,lng:-93.62},{n:"Richmond",lat:37.54,lng:-77.44},{n:"Anchorage",lat:61.22,lng:-149.90}
+];
+
 // Fix district geometry winding (exact match of election-results app)
 function fixDistrictGeom(g){
   if(!g)return null;
@@ -708,6 +728,14 @@ function renderD3Map(features,byDist,met,mx){
     });
 
   // Count rendered
+  // Add major city labels
+  CITIES.forEach(function(c){
+    var pt=proj([c.lng,c.lat]);
+    if(!pt)return;
+    svg.append("circle").attr("cx",pt[0]).attr("cy",pt[1]).attr("r",2).attr("fill","rgba(20,33,61,.6)").attr("stroke","#fff").attr("stroke-width",.5).style("pointer-events","none");
+    svg.append("text").attr("x",pt[0]+4).attr("y",pt[1]+1).text(c.n).attr("font-size","7px").attr("fill","rgba(20,33,61,.7)").attr("font-weight","500").style("pointer-events","none").style("text-shadow","0 0 2px var(--s), 0 0 2px var(--s), 0 0 4px var(--s)");
+  });
+
   container.insertAdjacentHTML("beforeend",'<div style="font-size:11px;color:var(--d);margin-top:6px;text-align:center">'+kept.length+' districts \u00b7 hover for details \u00b7 click to open state</div>');
 }
 
