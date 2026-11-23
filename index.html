@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
+<head><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Republican FEC — National Dashboard</title>
@@ -57,6 +57,31 @@ th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--t)}th 
 @media(max-width:700px){.md-wrap{flex-direction:column}.md-side{width:100%;min-width:0;max-height:200px;border-right:none;border-bottom:1px solid var(--b)}.md-detail{max-height:none}}
 
 @media(max-width:700px){.g2{grid-template-columns:1fr}.cr{flex-direction:column}select,input[type=text]{width:100%}.mc{width:40px;height:30px}.mc .sc{font-size:.56rem}.mc .sv{font-size:.42rem}}
+
+@media(max-width:768px){
+  .wrap{padding:8px}
+  .hdr{flex-direction:column;gap:8px}
+  .hdr h1{font-size:1rem}
+  .kpi{flex-wrap:wrap}.kpi>div{flex:1 1 45%;min-width:120px}
+  .g2{grid-template-columns:1fr}
+  .md-layout{flex-direction:column}
+  .md-sidebar{width:100%;max-height:200px;border-right:none;border-bottom:1px solid var(--b)}
+  .md-detail{min-width:0}
+  .md-detail-head{flex-direction:column;gap:4px}
+  table{font-size:.7rem}
+  th,td{padding:4px 5px}
+  .tabs{flex-wrap:wrap}
+  .tab{font-size:.7rem;padding:6px 10px}
+  #cycleBtns{flex-wrap:wrap}
+  #cycleBtns .tab{font-size:.64rem;padding:3px 6px}
+  .filters{flex-wrap:wrap;gap:4px}
+  .filters select,.filters input{font-size:.72rem;padding:4px 6px;min-width:0;flex:1 1 auto}
+}
+@media(max-width:480px){
+  .kpi>div{flex:1 1 100%}
+  .hdr h1{font-size:.88rem}
+  table{display:block;overflow-x:auto}
+}
 </style>
 </head>
 <body>
@@ -181,7 +206,7 @@ function renderNat(list){
 
   document.getElementById("view").innerHTML='<div class="card"><div class="ch"><span>National \u2014 '+ml+' by State</span>'+toggleHtml+'</div><div class="cb">'
     +legendHtml
-    +'<div style="display:flex;gap:0;align-items:flex-start"><div id="natMapArea" style="flex:1;min-width:0"></div><div id="natInfo" style="width:260px;flex-shrink:0;padding:12px;font-size:.78rem;border-left:1px solid var(--b);min-height:200px"><div style="color:var(--d);text-align:center;padding:40px 10px">Hover a state</div></div></div>'
+    +'<div style="display:flex;gap:0;align-items:flex-start;flex-wrap:wrap"><div id="natMapArea" style="flex:1;min-width:300px"></div><div id="natInfo" style="width:260px;flex-shrink:0;padding:12px;font-size:.78rem;border-left:1px solid var(--b);min-height:120px"><div style="color:var(--d);text-align:center;padding:40px 10px">Hover a state</div></div></div>'
     +'</div></div>'
     +'<div id="natDetail"></div>'
     +'<div class="g2"><div class="card"><div class="ch">Top 15 States</div><div class="cb"><div style="height:340px"><canvas id="c1"></canvas></div></div></div>'
@@ -327,7 +352,10 @@ function renderNatDetail(st){
   var rows="";
   members.forEach(function(m){
     var opp=OPP_BY_DIST[m.dist];
-    rows+='<tr><td><span class="bd">'+m.dist+'</span></td>'
+    var dNum=m.dist.split("-")[1]||"";
+    if(dNum==="00")dNum="AL";
+    rows+='<tr style="cursor:pointer" onclick="showCandidate(\''+m.dist+'\')">'
+      +'<td><span class="bd">'+dNum+'</span></td>'
       +'<td style="font-weight:600;color:var(--red)">'+m.name+'</td>'
       +'<td class="mo">'+fK(m.receipts)+'</td>'
       +'<td class="mo">'+fK(m.coh)+'</td>'
@@ -340,11 +368,63 @@ function renderNatDetail(st){
   });
 
   container.innerHTML='<div class="card" style="border-left:3px solid var(--red)"><div class="ch"><span>'+stateName+' ('+st+') \u2014 '+members.length+' race'+(members.length>1?"s":"")+'</span><button class="btn btn-ghost" onclick="natSelState=null;document.getElementById(\'natDetail\').innerHTML=\'\'" style="font-size:.7rem;padding:4px 10px">&#10005; Close</button></div>'
-    +'<div class="cb"><div class="tw"><table>'
+    +'<div class="cb"><div id="stateDistMap" style="max-width:400px;margin:0 auto 12px"></div><div class="tw"><table>'
     +'<thead><tr>'+dh("dist","District")+dh("name","Republican",'style="color:var(--red)"')+dh("receipts","Raised",'style="color:var(--red)"')+dh("coh","COH",'style="color:var(--red)"')
     +'<th style="border-left:2px solid var(--b);padding-left:12px;color:var(--blu)">Opponent</th><th class="r" style="color:var(--blu)">Raised</th><th class="r" style="color:var(--blu)">COH</th>'
     +'<th class="r">COH Adv.</th></tr></thead>'
     +'<tbody>'+rows+'</tbody></table></div></div></div>';
+
+  // Render mini district map for this state
+  var stFips=Object.keys(FIPS).find(function(k){return FIPS[k]===st});
+  if(stFips&&members.length>1){
+    var mapDiv=document.getElementById("stateDistMap");
+    if(mapDiv){
+      mapDiv.innerHTML='<div style="text-align:center;color:var(--d);font-size:.72rem;padding:8px">Loading districts\u2026</div>';
+      var TIGER="https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Legislative/MapServer/0/query";
+      fetch(TIGER+"?where=STATE%3D%27"+stFips+"%27&outFields=GEOID,BASENAME&outSR=4326&f=geojson&maxAllowableOffset=0.01&geometryPrecision=4")
+        .then(function(r){return r.json()})
+        .then(function(gj){
+          if(!gj.features||!gj.features.length){mapDiv.innerHTML="";return}
+          var feats=gj.features.map(function(f){
+            var g=fixDistrictGeom(f.geometry);
+            if(!g)return null;
+            var raw=String(f.properties.BASENAME||"").trim();
+            var dNum=/^\d+$/.test(raw)?String(+raw):"AL";
+            var dPad=dNum==="AL"?"00":String(dNum).padStart(2,"0");
+            return{type:"Feature",geometry:g,properties:{num:dNum,key:st+"-"+dPad}};
+          }).filter(Boolean);
+          if(!feats.length){mapDiv.innerHTML="";return}
+          var W=400,H=300;
+          var fc={type:"FeatureCollection",features:feats};
+          var proj=d3.geoAlbersUsa().fitExtent([[10,10],[W-10,H-10]],fc);
+          if(!proj){proj=d3.geoMercator().fitExtent([[10,10],[W-10,H-10]],fc)}
+          var path=d3.geoPath(proj);
+          var met=document.getElementById("metricSel")?document.getElementById("metricSel").value:"receipts";
+          var mx=Math.max.apply(null,members.map(function(m){return m[met]}).concat([1]));
+          var byD={};members.forEach(function(m){byD[m.dist]=m});
+          mapDiv.innerHTML="";
+          var svg=d3.select(mapDiv).append("svg").attr("viewBox","0 0 "+W+" "+H).attr("width","100%").style("display","block");
+          svg.selectAll("path").data(feats).enter().append("path")
+            .attr("d",path)
+            .attr("fill",function(f){var m=byD[f.properties.key];return m?colorScale(m[met],mx):"#ece8e0"})
+            .attr("stroke","rgba(255,255,255,.7)")
+            .attr("stroke-width",1);
+          // Add district number labels
+          svg.selectAll("text.dlabel").data(feats).enter().append("text")
+            .attr("class","dlabel")
+            .attr("x",function(f){var c=path.centroid(f);return c[0]})
+            .attr("y",function(f){var c=path.centroid(f);return c[1]})
+            .attr("text-anchor","middle")
+            .attr("dominant-baseline","central")
+            .attr("font-size",feats.length>20?"8px":feats.length>10?"10px":"12px")
+            .attr("font-weight","600")
+            .attr("fill",function(f){var m=byD[f.properties.key];return m?txtCol(m[met],mx):"#999"})
+            .attr("pointer-events","none")
+            .text(function(f){return f.properties.num});
+        })
+        .catch(function(){mapDiv.innerHTML=""});
+    }
+  }
 }
 
 
@@ -493,7 +573,7 @@ function renderCong(list){
   // Show loading state then render map
   document.getElementById("view").innerHTML='<div class="card"><div class="ch">Congressional District Map \u2014 '+ml+'<small>Geographic boundaries from US Census</small></div><div class="cb">'
     +'<div class="legend"><div class="li"><div class="lsw" style="background:'+colorScale(.05*mx,mx)+'"></div>Low</div><div class="li"><div class="lsw" style="background:'+colorScale(.5*mx,mx)+'"></div></div><div class="li"><div class="lsw" style="background:'+colorScale(mx,mx)+'"></div>High</div><div class="li" style="margin-left:8px"><div class="lsw" style="background:var(--s2);border:1px solid var(--b)"></div>No GOP candidate</div></div>'
-    +'<div style="display:flex;gap:0;align-items:flex-start"><div id="distMap" style="flex:1;min-width:0"></div><div id="distInfo" style="width:260px;flex-shrink:0;padding:12px;font-size:.78rem;border-left:1px solid var(--b);min-height:200px"><div style="color:var(--d);text-align:center;padding:40px 10px">Hover a district</div></div></div>'
+    +'<div style="display:flex;gap:0;align-items:flex-start;flex-wrap:wrap"><div id="distMap" style="flex:1;min-width:300px"></div><div id="distInfo" style="width:260px;flex-shrink:0;padding:12px;font-size:.78rem;border-left:1px solid var(--b);min-height:120px"><div style="color:var(--d);text-align:center;padding:40px 10px">Hover a district</div></div></div>'
     +'</div></div>';
 
   loadDistricts(function(features){
