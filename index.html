@@ -337,6 +337,50 @@ function renderNatDetail(st){
 }
 
 
+
+function showCandidate(dist){
+  var m=null;
+  ALL.forEach(function(c){if(c.dist===dist&&(!m||c.receipts>m.receipts))m=c});
+  if(!m)return;
+  
+  // Build quarterly rows if available
+  var qtrHtml="";
+  if(m.periods&&m.periods.length){
+    var qtrOnly=/^(Q[1-4]|Year-End) \d{4}$/;
+    var periods=m.periods.filter(function(p){return qtrOnly.test(p.label)});
+    if(periods.length){
+      qtrHtml='<div style="margin-top:14px;border-top:1px solid var(--b);padding-top:10px"><div style="font-weight:600;margin-bottom:6px;font-size:.8rem">Quarterly History</div>'
+        +'<table style="width:100%;font-size:.72rem;border-collapse:collapse"><tr style="color:var(--d)"><th style="text-align:left;padding:3px 6px">Period</th><th style="text-align:right;padding:3px 6px">Raised</th><th style="text-align:right;padding:3px 6px">COH</th></tr>';
+      periods.forEach(function(p){
+        qtrHtml+='<tr><td style="padding:3px 6px">'+p.label+'</td><td style="text-align:right;padding:3px 6px;font-family:var(--m)">'+fK(p.raised)+'</td><td style="text-align:right;padding:3px 6px;font-family:var(--m)">'+fK(p.coh)+'</td></tr>';
+      });
+      qtrHtml+='</table></div>';
+    }
+  }
+  
+  var h='<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)this.remove()">'
+    +'<div style="background:var(--s);border:1px solid var(--b);border-radius:10px;padding:20px 24px;max-width:460px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.2)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">'
+    +'<div><div style="font-size:1.1rem;font-weight:700">'+m.name+'</div>'
+    +'<div style="font-size:.78rem;color:var(--d);margin-top:2px">'+m.dist+' \u00b7 '+(SN[m.state]||m.state)+' \u00b7 '+m.type+'</div></div>'
+    +'<button onclick="this.closest(\x27[style*=fixed]\x27).remove()" style="background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--d);padding:0 4px">\u2715</button></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:4px">'
+    +'<div style="background:var(--s2);border-radius:6px;padding:10px"><div style="font-size:.68rem;color:var(--d)">Total Raised</div><div style="font-size:1rem;font-weight:700;font-family:var(--m);color:var(--red)">'+fmt(m.receipts)+'</div></div>'
+    +'<div style="background:var(--s2);border-radius:6px;padding:10px"><div style="font-size:.68rem;color:var(--d)">Cash on Hand</div><div style="font-size:1rem;font-weight:700;font-family:var(--m)">'+fmt(m.coh)+'</div></div>'
+    +'<div style="background:var(--s2);border-radius:6px;padding:10px"><div style="font-size:.68rem;color:var(--d)">Total Spent</div><div style="font-size:1rem;font-weight:700;font-family:var(--m)">'+fmt(m.disbursements)+'</div></div>'
+    +'<div style="background:var(--s2);border-radius:6px;padding:10px"><div style="font-size:.68rem;color:var(--d)">Individual</div><div style="font-size:1rem;font-weight:700;font-family:var(--m)">'+fmt(m.indiv)+'</div></div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+    +'<div style="background:var(--s2);border-radius:6px;padding:10px"><div style="font-size:.68rem;color:var(--d)">PAC</div><div style="font-size:1rem;font-weight:700;font-family:var(--m)">'+fmt(m.pac)+'</div></div>'
+    +'<div style="background:var(--s2);border-radius:6px;padding:10px"><div style="font-size:.68rem;color:var(--d)">Candidate ID</div><div style="font-size:.82rem;font-weight:500;font-family:var(--m)">'+m.candidateId+'</div></div>'
+    +'</div>'
+    +qtrHtml
+    +'<div style="margin-top:14px;text-align:center"><a href="https://www.fec.gov/data/candidate/'+m.candidateId+'/" target="_blank" style="font-size:.76rem;color:var(--red)">View on FEC.gov \u2192</a></div>'
+    +'</div></div>';
+  
+  var el=document.createElement("div");el.innerHTML=h;document.body.appendChild(el.firstChild);
+}
+
 function showOnMap(st){
   curTab="congress";
   render();
@@ -617,7 +661,7 @@ function renderQtr(list){
   labelOrder.forEach(function(l){detail+='<th class="r" style="font-size:.6rem">'+l.replace("PRE-","Pre-").replace("POST-","Post-")+'</th>'});
   detail+='</tr></thead><tbody>';
   ms.forEach(function(m){
-    detail+='<tr style="cursor:pointer" onclick="showOnMap(\''+m.state+'\')" title="Click to show on map"><td><span class="bd">'+m.dist+'</span></td><td>'+m.name+'<span class="bs">'+m.type+'</span></td>'
+    detail+='<tr style="cursor:pointer" onclick="showCandidate(\''+m.dist+'\')" title="Click for details"><td><span class="bd">'+m.dist+'</span></td><td>'+m.name+'<span class="bs">'+m.type+'</span></td>'
       +(qtrSelState==="ALL"?'<td style="font-size:.72rem;color:var(--d)">'+m.sn+'</td>':'')
       +'<td class="mo">'+fmt(m.receipts)+'</td><td class="mo">'+fmt(m.coh)+'</td>';
     labelOrder.forEach(function(l){var p=null;for(var i=0;i<m.periods.length;i++){if(m.periods[i].label===l){p=m.periods[i];break}}
@@ -670,7 +714,7 @@ function renderList(list){
   var detail='<div class="md-detail-head"><span>'+title+'</span><span class="md-count">'+count+'</span></div>';
   detail+='<div class="tw"><table><thead><tr>'+ah("dist","District")+ah("name","Name")+(listSelState==="ALL"?ah("state","State"):"")+ah("receipts","Raised")+ah("coh","COH")+ah("disbursements","Spent")+ah("indiv","Individual")+ah("pac","PAC")+'</tr></thead><tbody>';
   ms.forEach(function(m){
-    detail+='<tr style="cursor:pointer" onclick="showOnMap(\''+m.state+'\')" title="Click to show on map"><td><span class="bd">'+m.dist+'</span></td><td>'+m.name+'<span class="bs">'+m.type+'</span></td>'
+    detail+='<tr style="cursor:pointer" onclick="showCandidate(\''+m.dist+'\')" title="Click for details"><td><span class="bd">'+m.dist+'</span></td><td>'+m.name+'<span class="bs">'+m.type+'</span></td>'
       +(listSelState==="ALL"?'<td style="font-size:.72rem;color:var(--d)">'+m.sn+'</td>':'')
       +'<td class="mo">'+fmt(m.receipts)+'</td><td class="mo">'+fmt(m.coh)+'</td><td class="mo">'+fmt(m.disbursements)+'</td><td class="mo">'+fmt(m.indiv)+'</td><td class="mo">'+fmt(m.pac)+'</td></tr>'});
   detail+='</tbody></table></div>';
