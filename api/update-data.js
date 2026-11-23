@@ -51,7 +51,7 @@ async function fetchReports(candidates, cycle) {
             const year = rpt.coverage_end_date ? rpt.coverage_end_date.substring(0, 4) : "";
             const label = (RL[rt] || rt) + " " + year;
             if (!reports[cid].find(p => p.label === label)) {
-              reports[cid].push({ label, raised: rpt.total_receipts || rpt.receipts || 0, coh: rpt.cash_on_hand_end_period || 0, end: rpt.coverage_end_date || "" });
+              reports[cid].push({ label, raised: rpt.total_receipts_period || rpt.total_receipts || rpt.receipts || 0, coh: rpt.cash_on_hand_end_period || 0, end: rpt.coverage_end_date || "" });
             }
           });
         }
