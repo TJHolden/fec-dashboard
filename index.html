@@ -599,9 +599,19 @@ function renderQtr(list){
   if(qtrSelState==="ALL"){ms=withQ;title="National";count=totalN}
   else{var sel=sd[qtrSelState];if(!sel){ms=[];title="Select a state";count=0}else{ms=sel.members;title=sel.name+" ("+sel.code+")";count=sel.n}}
   ms=sortMembers(ms,qtrSortCol,qtrSortAsc);
+  // Only show Q1, Q2, Q3, Q4, Year-End columns (skip Pre-Primary, Pre-General, etc.)
+  var qtrOnly=/^(Q[1-4]|Year-End) \d{4}$/;
   var labelSet={},labelOrder=[];
-  ms.forEach(function(m){m.periods.forEach(function(p){if(!labelSet[p.label]){labelSet[p.label]=1;labelOrder.push(p.label)}})});
-  labelOrder.reverse();
+  ms.forEach(function(m){m.periods.forEach(function(p){if(qtrOnly.test(p.label)&&!labelSet[p.label]){labelSet[p.label]=1;labelOrder.push(p.label)}})});
+  // Sort by year then quarter, most recent first
+  labelOrder.sort(function(a,b){
+    var ya=a.match(/\d{4}/),yb=b.match(/\d{4}/);
+    if(!ya||!yb)return 0;
+    if(yb[0]!==ya[0])return yb[0]-ya[0];
+    var order={"Q1":1,"Q2":2,"Q3":3,"Q4":4,"Year-End":5};
+    var qa=order[a.replace(/ \d{4}/,"")]||0,qb=order[b.replace(/ \d{4}/,"")]||0;
+    return qb-qa;
+  });
   function qh(col,label){var isA=qtrSortCol===col;return '<th class="sortable'+(col!=="dist"&&col!=="name"?" r":"")+'" onclick="qtrSort(\''+col+'\')">'+label+'<span class="arrow'+(isA?" on":"")+'"> '+(isA?(qtrSortAsc?"&#9650;":"&#9660;"):"&#9650;")+'</span></th>'}
   var detail='<div class="md-detail-head"><span>'+title+'</span><span class="md-count">'+count+'</span></div>';
   detail+='<div class="tw"><table><thead><tr>'+qh("dist","District")+qh("name","Name")+(qtrSelState==="ALL"?qh("state","State"):"")+qh("receipts","Overall")+qh("coh","COH");
