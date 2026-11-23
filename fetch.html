@@ -111,7 +111,7 @@ async function commitToGitHub(data){
 async function go(){
   if(!GH_TOKEN){st.textContent="Enter your GitHub token above first.";return;}
   document.getElementById("btn").disabled=true;
-  st.textContent="Starting... This takes 3-5 minutes (FEC rate limits).";
+  st.textContent="Starting...";
   try{
     var data={updated:new Date().toISOString(),cycles:{}};
     var cycles=[2028,2026,2024,2022,2020,2018,2016,2014,2012];
@@ -119,17 +119,21 @@ async function go(){
       data.cycles[cycles[ci]]=await fetchCycle(cycles[ci]);
       await sleep(2000);
     }
-    // Quarterly reports for 2026 and 2024
-    for(var qi=0;qi<2;qi++){
-      var cy=[2026,2024][qi];
-      if(data.cycles[cy]&&data.cycles[cy].length){
-        var inc=data.cycles[cy].filter(function(c){return c.incumbent_challenge==="I"||(c.receipts||0)>100000;});
-        data.cycles[cy+"_reports"]=await fetchReports(inc,cy);
-        await sleep(2000);
-      }
-    }
+    // Commit candidates first so we don't lose them
+    log("\nCommitting candidates...");
     await commitToGitHub(data);
-  }catch(e){log("\nError: "+e.message+"\n\nTry clicking the button again - it will retry where it left off.");}
+    
+    // Now fetch 2026 quarterly reports only (2024 takes too long)
+    var cy=2026;
+    if(data.cycles[cy]&&data.cycles[cy].length){
+      var inc=data.cycles[cy].filter(function(c){return c.incumbent_challenge==="I"||(c.receipts||0)>50000;});
+      data.cycles[cy+"_reports"]=await fetchReports(inc,cy);
+      data.updated=new Date().toISOString();
+      log("\nCommitting with quarterly data...");
+      await commitToGitHub(data);
+    }
+    log("\nAll done! Dashboard will load instantly now.");
+  }catch(e){log("\nError: "+e.message+"\n\nTry clicking the button again.");}
   document.getElementById("btn").disabled=false;
 }
 </script>
