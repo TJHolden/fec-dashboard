@@ -306,7 +306,18 @@ function renderNatDetail(st){
     else el.appendChild(div);
     container=div;
   }
-  var members=ALL.filter(function(m){return m.state===st});
+  var ty=document.getElementById("typFilt")?document.getElementById("typFilt").value:"";
+  var allMembers=ALL.filter(function(m){return m.state===st});
+  var members=allMembers;
+  if(ty==="General"){
+    var byD={};
+    allMembers.forEach(function(m){
+      if(!byD[m.dist]){byD[m.dist]=m}
+      else if(m.type==="Incumbent"){byD[m.dist]=m}
+      else if(byD[m.dist].type!=="Incumbent"&&m.receipts>byD[m.dist].receipts){byD[m.dist]=m}
+    });
+    members=Object.values(byD);
+  }else if(ty){members=allMembers.filter(function(m){return m.type===ty})};
   if(!members.length){container.innerHTML="";return}
   members=sortMembers(members,detailSortCol,detailSortAsc);
   var stateName=SN[st]||st;
@@ -802,7 +813,7 @@ function parseFECCandidates(raw){
   var num=function(v){var n=parseFloat(v);return isNaN(n)?0:n};
   return raw.map(function(c){
     var nm=c.name||"";var parts=nm.split(",");
-    var name=parts.length>=2?(parts[1].trim().split(" ")[0]+" "+parts[0].trim()).replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()}).replace(/  +/g," "):nm;
+    var name=parts.length>=2?(parts[1].trim().split(" ")[0]+" "+parts[0].trim()).toLowerCase().replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()}).replace(/  +/g," "):nm.toLowerCase().replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()});
     var dnum=c.district_number!=null?c.district_number:c.district;
     var dstr=(dnum===0||dnum==="0"||dnum==null||dnum==="")?"00":String(dnum).padStart(2,"0");
     return{name:name,state:c.state,sn:SN[c.state]||c.state,dist:c.state+"-"+dstr,office:c.office||"H",
@@ -855,7 +866,7 @@ function loadFromCache(){
   }
   ALL=cycleData.map(function(c){
     var nm=c.name||"";var parts=nm.split(",");
-    var name=parts.length>=2?(parts[1].trim().split(" ")[0]+" "+parts[0].trim()).replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()}).replace(/  +/g," "):nm;
+    var name=parts.length>=2?(parts[1].trim().split(" ")[0]+" "+parts[0].trim()).toLowerCase().replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()}).replace(/  +/g," "):nm.toLowerCase().replace(/(?:^|\s)\S/g,function(ch){return ch.toUpperCase()});
     var dnum=c.district_number!=null?c.district_number:c.district;
     var dstr=(dnum===0||dnum==="0"||dnum==null||dnum==="")?"00":String(dnum).padStart(2,"0");
     var dist=c.state+"-"+dstr;
