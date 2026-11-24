@@ -402,8 +402,7 @@ function renderNatDetail(st){
           if(!feats.length){mapDiv.innerHTML="";return}
           var W=600,H=420;
           var fc={type:"FeatureCollection",features:feats};
-          var proj=d3.geoAlbersUsa().fitExtent([[15,15],[W-15,H-15]],fc);
-          if(!proj)proj=d3.geoMercator().fitExtent([[15,15],[W-15,H-15]],fc);
+          var proj=d3.geoMercator().fitExtent([[12,12],[W-12,H-12]],fc);
           var path=d3.geoPath(proj);
           var met2=document.getElementById("metricSel")?document.getElementById("metricSel").value:"receipts";
           var mx2=Math.max.apply(null,members.map(function(m){return m[met2]}).concat([1]));
@@ -758,10 +757,9 @@ function renderCongDrill(st,list,byDist,met,mx){
       wrap.style.maxWidth="700px";
       wrap.style.margin="0 auto";
       mapDiv.appendChild(wrap);
-      var W=700,H=500;
+      var W=660,H=460;
       var fc={type:"FeatureCollection",features:feats};
-      var proj=d3.geoAlbersUsa().fitExtent([[15,15],[W-15,H-15]],fc);
-      if(!proj)proj=d3.geoMercator().fitExtent([[15,15],[W-15,H-15]],fc);
+      var proj=d3.geoMercator().fitExtent([[12,12],[W-12,H-12]],fc);
       var path=d3.geoPath(proj);
 
       // Compute centroids
