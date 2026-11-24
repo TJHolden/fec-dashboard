@@ -862,23 +862,52 @@ function loadFEC(){
     return true;
   }
   if(DATA_CACHE&&loadDJ(DATA_CACHE))return;
-  // Primary: GitHub raw data.json (has everything including quarterly)
+  // Try multiple sources in order
   var GH_DATA="https://raw.githubusercontent.com/TJHolden/fec-dashboard/main/data.json";
-  fetch(GH_DATA).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(dj){
-    if(!loadDJ(dj))throw new Error("no cycle");
-  }).catch(function(e){
-    // Fallback: Vercel API (candidates only)
-    fetch(VERCEL_API+"?cycle="+CYCLE).then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}).then(function(d){
-      ALL=parseFECCandidates(d.candidates||[]);
-      setStatus("ok",ALL.length+" candidates ("+CYCLE+" cycle). Quarterly data loading...");
+  
+  function tryGitHub(){
+    return fetch(GH_DATA).then(function(r){
+      if(!r.ok)throw new Error("GitHub HTTP "+r.status);
+      return r.json();
+    }).then(function(dj){
+      if(!loadDJ(dj))throw new Error("No data for cycle "+CYCLE);
+    });
+  }
+  
+  function tryVercel(){
+    return fetch(VERCEL_API+"?cycle="+CYCLE).then(function(r){
+      if(!r.ok)throw new Error("Vercel HTTP "+r.status);
+      return r.json();
+    }).then(function(d){
+      if(!d.candidates||!d.candidates.length)throw new Error("No candidates returned");
+      ALL=parseFECCandidates(d.candidates);
+      setStatus("ok",ALL.length+" candidates ("+CYCLE+" cycle).");
       render();
-      // Try to get quarterly from GitHub data.json in background
+      // Load quarterly in background
       fetch(GH_DATA).then(function(r){return r.json()}).then(function(dj){
-        var rKey=CYCLE+"_reports";
-        var reports=dj&&dj.cycles?dj.cycles[rKey]:null;
+        var rKey=CYCLE+"_reports";var reports=dj&&dj.cycles?dj.cycles[rKey]:null;
         if(reports){ALL.forEach(function(m){var rpts=reports[m.candidateId];if(rpts)m.periods=rpts});render()}
       }).catch(function(){});
-    }).catch(function(){setStatus("err","Could not load data. Check your connection.");ALL=[];render()});
+    });
+  }
+  
+  function tryLocal(){
+    return fetch("data.json").then(function(r){
+      if(!r.ok)throw new Error("Local HTTP "+r.status);
+      return r.json();
+    }).then(function(dj){
+      if(!loadDJ(dj))throw new Error("No data for cycle "+CYCLE);
+    });
+  }
+
+  tryGitHub().catch(function(e1){
+    setStatus("ok","Loading from API...");
+    tryVercel().catch(function(e2){
+      tryLocal().catch(function(e3){
+        setStatus("err","Could not load data. Errors: "+e1.message+"; "+e2.message+"; "+e3.message);
+        ALL=[];render();
+      });
+    });
   });
 }
 
