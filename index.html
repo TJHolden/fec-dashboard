@@ -287,7 +287,7 @@ function renderNatGeo(features,sd,met,mx){
     })
     .on("click",function(ev,d){
       var st=FIPS[d.id];
-      if(st){natSelState=st;renderNatDetail(st)}
+      if(st){congDrillState=st;curTab='congress';render()}
     });
 
   // Draw state borders mesh on top for clean lines
@@ -314,7 +314,7 @@ function renderNatTiles(sd,met,mx){
     var tc=s?txtCol(val,mx):"var(--d)";
     var tipHtml=s?'<div style="font-weight:700;margin-bottom:2px">'+s.name+' ('+s.n+' GOP)</div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Raised</span><span style="font-family:var(--m);font-weight:600">'+fmt(s.receipts)+'</span></div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fmt(s.coh)+'</span></div><div style="display:flex;justify-content:space-between;gap:10px;font-size:.72rem"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fmt(s.disbursements)+'</span></div>'
       :'<div style="font-weight:700">'+(SN[st]||st)+'</div><div>No data</div>';
-    cells+='<div class="mc" data-tip="'+tipHtml.replace(/"/g,"&quot;")+'" style="grid-row:'+(r+1)+';grid-column:'+(c+1)+';background:'+bg+';color:'+tc+'" onclick="natSelState=\''+st+'\';renderNatDetail(\''+st+'\')"><span class="sc">'+st+'</span><span class="sv">'+(s?fK(val):"\u2014")+'</span></div>';
+    cells+='<div class="mc" data-tip="'+tipHtml.replace(/"/g,"&quot;")+'" style="grid-row:'+(r+1)+';grid-column:'+(c+1)+';background:'+bg+';color:'+tc+'" onclick="congDrillState=\''+st+'\';curTab=\'congress\';render()"><span class="sc">'+st+'</span><span class="sv">'+(s?fK(val):"\u2014")+'</span></div>';
   }
   area.innerHTML='<div class="map-wrap"><div class="map-grid" style="grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(9,1fr)">'+cells+'</div></div>';
 }
