@@ -561,93 +561,143 @@ function renderCong(list){
   var ml={receipts:"Raised",coh:"Cash on Hand",disbursements:"Spent"}[met];
   var byDist={};
   list.forEach(function(m){var key=m.dist;if(!byDist[key])byDist[key]=[];byDist[key].push(m)});
-
-  // State-level aggregation
   var sd={};
   list.forEach(function(m){
-    if(!sd[m.state])sd[m.state]={name:SN[m.state]||m.state,abbr:m.state,n:0,receipts:0,coh:0,disbursements:0,indiv:0,pac:0,members:[]};
-    sd[m.state].n++;sd[m.state].receipts+=m.receipts;sd[m.state].coh+=m.coh;sd[m.state].disbursements+=m.disbursements;
-    sd[m.state].indiv+=m.indiv;sd[m.state].pac+=m.pac;sd[m.state].members.push(m);
+    if(!sd[m.state])sd[m.state]={name:SN[m.state]||m.state,abbr:m.state,n:0,receipts:0,coh:0,disbursements:0,members:[]};
+    sd[m.state].n++;sd[m.state].receipts+=m.receipts;sd[m.state].coh+=m.coh;sd[m.state].disbursements+=m.disbursements;sd[m.state].members.push(m);
   });
-  var vals=Object.values(sd).map(function(s){return s[met]/Math.max(s.n,1)});
+
+  if(congDrillState){renderCongDrill(congDrillState,list,byDist,met);return}
+
+  var vals=list.map(function(m){return m[met]});
   var mx=Math.max.apply(null,vals.concat([1]));
+  var legendHtml='<div class="legend"><div class="li"><div class="lsw" style="background:'+colorScale(.15*mx,mx)+'"></div>Low</div><div class="li"><div class="lsw" style="background:'+colorScale(.5*mx,mx)+'"></div></div><div class="li"><div class="lsw" style="background:'+colorScale(mx,mx)+'"></div>High</div><div class="li"><div class="lsw" style="background:#ece8e0;border:1px solid var(--b)"></div>No GOP</div></div>';
 
-  var legendHtml='<div class="legend"><div class="li"><div class="lsw" style="background:'+colorScale(.05*mx,mx)+'"></div>Low</div><div class="li"><div class="lsw" style="background:'+colorScale(.5*mx,mx)+'"></div></div><div class="li"><div class="lsw" style="background:'+colorScale(mx,mx)+'"></div>High</div><div class="li"><div class="lsw" style="background:#ece8e0;border:1px solid var(--b)"></div>No GOP</div></div>';
-
-  if(congDrillState){
-    renderCongDrill(congDrillState,list,byDist,met,mx);
-    return;
-  }
-
-  document.getElementById("view").innerHTML='<div class="card"><div class="ch"><span>Congressional District Map \u2014 '+ml+'</span><span style="font-size:.7rem;color:var(--d)">Click a state to view districts</span></div><div class="cb">'
+  document.getElementById("view").innerHTML='<div class="card"><div class="ch"><span>Congressional District Map \u2014 '+ml+'</span><span style="font-size:.7rem;color:var(--d)">Hover for details \u00b7 Click state to drill down</span></div><div class="cb">'
     +legendHtml
-    +'<div id="congStateMap"></div>'
+    +'<div id="congMap" style="position:relative"></div>'
     +'</div></div>'
     +'<div id="congDetail"></div>';
 
-  // Render state-level map
-  var features=topojson.feature(STATES_TOPO,STATES_TOPO.objects.states).features;
-  var container=document.getElementById("congStateMap");
-  var W=975,H=610;
-  var svg=d3.select(container).append("svg").attr("viewBox","0 0 "+W+" "+H).attr("width","100%").style("display","block").style("cursor","pointer");
-  var path=d3.geoPath();
-  var byFips={};
-  Object.keys(FIPS).forEach(function(fp){
-    var st=FIPS[fp];
-    if(sd[st])byFips[fp]=sd[st];
+  var container=document.getElementById("congMap");
+  container.innerHTML='<div style="text-align:center;color:var(--d);padding:20px">Loading districts\u2026</div>';
+
+  // Load all districts nationally (same as election-results app)
+  var CD_URL="https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Legislative/MapServer/0/query?where=1%3D1&outFields=GEOID,BASENAME,STATE&outSR=4326&f=geojson&maxAllowableOffset=0.02&geometryPrecision=3";
+  fetch(CD_URL).then(function(r){return r.json()}).then(function(gj){
+    if(!gj.features||!gj.features.length)throw new Error("No districts");
+
+    // Process features (same as election-results)
+    var kept=[];
+    gj.features.forEach(function(f){
+      var g=fixDistrictGeom(f.geometry);if(!g)return;
+      var gid=String(f.properties.GEOID||"");
+      if(/ZZ$/i.test(gid))return;
+      var stFips=String(f.properties.STATE||"").padStart(2,"0");
+      var ab=FIPS[stFips];
+      if(!ab||ab==="DC")return;
+      var raw=String(f.properties.BASENAME||"").trim();
+      var dist=/^\d+$/.test(raw)?String(+raw):/at[- ]large/i.test(raw)||/00$/.test(gid)?"AL":raw;
+      if(!dist)return;
+      var dPad=dist==="AL"?"00":String(dist).padStart(2,"0");
+      kept.push({feat:{type:"Feature",geometry:g},abbr:ab,dist:dist,key:ab+"-"+dPad});
+    });
+
+    var W=975,H=610;
+    // Use embedded state features to fit projection (same as election-results)
+    var usFeats=topojson.feature(STATES_TOPO,STATES_TOPO.objects.states).features;
+    var proj=d3.geoAlbersUsa().fitExtent([[0,0],[W,H]],{type:"FeatureCollection",features:usFeats});
+    var path=d3.geoPath(proj);
+
+    // Compute paths and centroids
+    var items=kept.map(function(k){
+      var d=path(k.feat);if(!d)return null;
+      var c=path.centroid(k.feat);
+      var valid=c&&isFinite(c[0])&&isFinite(c[1]);
+      return{abbr:k.abbr,dist:k.dist,key:k.key,d:d,c:valid?c:null};
+    }).filter(Boolean);
+
+    // State outlines
+    var stMesh=topojson.mesh(STATES_TOPO,STATES_TOPO.objects.states,function(a,b){return a!==b});
+    var stOutline=path(stMesh);
+
+    container.innerHTML="";
+    var wrap=document.createElement("div");
+    wrap.style.position="relative";
+    container.appendChild(wrap);
+
+    var svg=d3.select(wrap).append("svg")
+      .attr("viewBox","0 0 "+W+" "+H).attr("width","100%").style("display","block");
+
+    // Draw districts
+    svg.selectAll("path.dist").data(items).enter().append("path")
+      .attr("class","dist")
+      .attr("d",function(x){return x.d})
+      .attr("fill",function(x){
+        var members=byDist[x.key];
+        if(!members||!members.length)return"#ece8e0";
+        return colorScale(members[0][met],mx);
+      })
+      .attr("stroke","rgba(255,255,255,.55)")
+      .attr("stroke-width",0.4)
+      .style("cursor","pointer")
+      .on("mouseenter",function(ev,x){
+        d3.select(this).attr("stroke","#c9a227").attr("stroke-width",1.5);
+        // Show hover card at centroid
+        var members=byDist[x.key];
+        var hc=document.getElementById("congHover");
+        if(!hc){hc=document.createElement("div");hc.id="congHover";wrap.appendChild(hc)}
+        var infoH="";
+        if(members&&members.length){
+          var m=members[0];
+          infoH='<div style="font-weight:700;font-size:13px">'+m.name+'</div>'
+            +'<div style="font-size:11px;color:#6e7689;margin:2px 0 6px">'+m.dist+' \u00b7 '+m.type+'</div>'
+            +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>Raised</span><span style="font-family:var(--m);font-weight:600;color:var(--red)">'+fK(m.receipts)+'</span></div>'
+            +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fK(m.coh)+'</span></div>'
+            +'<div style="display:flex;justify-content:space-between;font-size:11px"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fK(m.disbursements)+'</span></div>';
+        }else{
+          infoH='<div style="font-weight:700;font-size:13px">'+x.key+'</div><div style="font-size:11px;color:#6e7689">No Republican candidate</div>';
+        }
+        hc.innerHTML=infoH;
+        hc.style.cssText="position:absolute;background:var(--s);border:1px solid var(--b);border-radius:8px;padding:10px 12px;pointer-events:none;z-index:5;min-width:200px;box-shadow:0 8px 24px rgba(0,0,0,.15);"
+          +"left:"+Math.min(74,Math.max(0,x.c[0]/W*100+1.5))+"%;top:"+Math.min(64,Math.max(0,x.c[1]/H*100))+"%";
+        hc.style.display="block";
+      })
+      .on("mouseleave",function(){
+        d3.select(this).attr("stroke","rgba(255,255,255,.55)").attr("stroke-width",0.4);
+        var hc=document.getElementById("congHover");if(hc)hc.style.display="none";
+      })
+      .on("click",function(ev,x){
+        congDrillState=x.abbr;render();
+      });
+
+    // State outlines on top (same as election-results)
+    if(stOutline){
+      svg.append("path").attr("d",stOutline)
+        .attr("fill","none").attr("stroke","rgba(60,70,90,.55)").attr("stroke-width",0.9)
+        .style("pointer-events","none");
+    }
+
+    // Count
+    wrap.insertAdjacentHTML("beforeend",'<div style="font-size:11px;color:var(--d);margin-top:6px;text-align:center">'+items.length+' districts \u00b7 hover for details \u00b7 click to open state</div>');
+
+  }).catch(function(e){
+    // Fallback: state-level map from embedded TopoJSON
+    container.innerHTML="";
+    var features=topojson.feature(STATES_TOPO,STATES_TOPO.objects.states).features;
+    var svg=d3.select(container).append("svg").attr("viewBox","0 0 975 610").attr("width","100%").style("display","block");
+    var byFips={};
+    Object.keys(FIPS).forEach(function(fp){var st=FIPS[fp];if(sd[st])byFips[fp]=sd[st]});
+    var stVals=Object.values(sd).map(function(s){return s.receipts/Math.max(s.n,1)});
+    var stMx=Math.max.apply(null,stVals.concat([1]));
+    svg.selectAll("path").data(features).enter().append("path")
+      .attr("d",d3.geoPath())
+      .attr("fill",function(d){var s=byFips[d.id];if(!s)return"#ece8e0";return colorScale(s.receipts/s.n,stMx)})
+      .attr("stroke","#8a8070").attr("stroke-width",0.8).style("cursor","pointer")
+      .on("click",function(ev,d){var st=FIPS[d.id];if(st&&sd[st]){congDrillState=st;render()}});
   });
 
-  svg.selectAll("path.state").data(features).enter().append("path")
-    .attr("class","state").attr("d",path)
-    .attr("fill",function(d){var s=byFips[d.id];if(!s||!s.n)return"#ece8e0";return colorScale(s[met]/s.n,mx)})
-    .attr("stroke","#8a8070").attr("stroke-width",0.8)
-    .on("mouseenter",function(ev,d){
-      d3.select(this).attr("stroke","#14213d").attr("stroke-width",2);
-      var s=byFips[d.id];var st=FIPS[d.id]||"";
-      var infoH="";
-      if(s&&s.n){
-        infoH='<div style="font-weight:700;font-size:.92rem;margin-bottom:4px">'+s.name+'</div>'
-          +'<div style="font-size:.72rem;color:var(--d);margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--b)">'+s.n+' Republican'+(s.n>1?"s":"")+'</div>'
-          +'<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Total Raised</span><span style="font-family:var(--m);font-weight:600">'+fK(s.receipts)+'</span></div>'
-          +'<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Total COH</span><span style="font-family:var(--m);font-weight:600">'+fK(s.coh)+'</span></div>'
-          +'<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Total Spent</span><span style="font-family:var(--m);font-weight:600">'+fK(s.disbursements)+'</span></div>'
-          +'<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>Avg Raised</span><span style="font-family:var(--m);font-weight:600">'+fK(s.receipts/s.n)+'</span></div>'
-          +'<div style="margin-top:10px;font-size:.68rem;color:var(--red);font-weight:600">Click to view districts \u2192</div>';
-      }else{
-        infoH='<div style="font-weight:700;margin-bottom:4px">'+(SN[st]||st||"Unknown")+'</div><div style="color:var(--d)">No Republican candidates</div>';
-      }
-      tip.style.display="block";tip.innerHTML=infoH;
-    })
-    .on("mousemove",function(ev){
-      var x=ev.pageX+14,y=ev.pageY+14;
-      if(ev.clientX+280>window.innerWidth)x=ev.pageX-270;
-      if(ev.clientY+200>window.innerHeight)y=ev.pageY-200;
-      tip.style.left=x+"px";tip.style.top=y+"px";
-    })
-    .on("mouseleave",function(){d3.select(this).attr("stroke","#8a8070").attr("stroke-width",0.8);tip.style.display="none"})
-    .on("click",function(ev,d){
-      var st=FIPS[d.id];
-      if(st&&sd[st]){congDrillState=st;render()}
-    });
-
-
-
-  // Overlay congressional district lines on the state map
-  var TIGER_CD="https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Legislative/MapServer/0/query?where=1%3D1&outFields=GEOID&outSR=4326&f=geojson&maxAllowableOffset=0.03&geometryPrecision=2";
-  fetch(TIGER_CD).then(function(r){return r.json()}).then(function(gj){
-    if(!gj.features)return;
-    var albers=d3.geoAlbersUsa().scale(1280).translate([480,300]);
-    var cdPath=d3.geoPath(albers);
-    gj.features.forEach(function(f){
-      var g=fixDistrictGeom(f.geometry);
-      if(!g)return;
-      svg.append("path").attr("d",cdPath({type:"Feature",geometry:g}))
-        .attr("fill","none").attr("stroke","rgba(255,255,255,.35)").attr("stroke-width",0.3)
-        .style("pointer-events","none");
-    });
-  }).catch(function(){});
-
-  // All incumbents table below
+  // Lowest-raising incumbents table
   var incs=list.filter(function(m){return m.type==="Incumbent"}).sort(function(a,b){return a.receipts-b.receipts}).slice(0,15);
   if(incs.length){
     var lowHtml="";
