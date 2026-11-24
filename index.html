@@ -92,6 +92,7 @@ th.sortable{cursor:pointer;user-select:none}th.sortable:hover{color:var(--t)}th 
     <input type="text" id="search" placeholder="Search name, state, district&#8230;" oninput="render()">
     <select id="regionFilt" onchange="render()"><option value="">All regions</option><option value="Northeast">Northeast</option><option value="Midwest">Midwest</option><option value="South">South</option><option value="West">West</option></select>
       <select id="typFilt" onchange="render()"><option value="">All filers</option><option value="Incumbent">Incumbents</option><option value="Challenger">Challengers</option><option value="Open">Open</option><option value="General" selected>General candidates</option></select>
+      <select id="minFilt" onchange="render();try{localStorage.setItem('fec_min_raised',this.value)}catch(e){}"><option value="0">Anyone</option><option value="1">More than $0</option><option value="5000" selected>$5K+</option><option value="25000">$25K+</option><option value="100000">$100K+</option></select>
   </div>
   <div class="prog" id="prog"><div class="prog-bar"><div class="prog-fill" id="progFill" style="width:0%"></div></div><div class="prog-text" id="progText"></div></div>
   <div class="sts" id="sts"></div>
@@ -131,7 +132,7 @@ function getFiltered(){var q=document.getElementById("search").value.toLowerCase
         else if(byD[m.dist].type!=="Incumbent"&&m.receipts>byD[m.dist].receipts){byD[m.dist]=m}
       });
       f=Object.values(byD);
-    }else if(ty){f=f.filter(function(m){return m.type===ty})};if(reg&&REGIONS[reg])f=f.filter(function(m){return REGIONS[reg].indexOf(m.state)>=0});return f}
+    }else if(ty){f=f.filter(function(m){return m.type===ty})};if(reg&&REGIONS[reg])f=f.filter(function(m){return REGIONS[reg].indexOf(m.state)>=0});var minR=+(document.getElementById('minFilt')?document.getElementById('minFilt').value:5000);if(minR>0)f=f.filter(function(m){return m.type==="Incumbent"||m.receipts>=minR});return f}
 
 // Tooltip via data attributes - no backtick issues
 var tip=document.getElementById("tip");
@@ -781,7 +782,8 @@ function renderCycleBtns(){updateCycleLabel();
     b.className="tab"+(c===CYCLE?" on":"");
     b.textContent=c;
     b.style.cssText="font-size:.72rem;padding:5px 10px;min-width:44px";
-    b.onclick=function(){CYCLE=c;renderCycleBtns();if(isClaudePreview){render()}else{loadFEC()}};
+    b.onclick=function(){CYCLE=c;renderCycleBtns();try{var savedMin=localStorage.getItem('fec_min_raised');if(savedMin&&document.getElementById('minFilt'))document.getElementById('minFilt').value=savedMin}catch(e){}
+if(isClaudePreview){render()}else{loadFEC()}};
     el.appendChild(b);
   });
 }
@@ -1007,6 +1009,7 @@ function loadQuarterlyReports(overrideCycle){
   batches.forEach(function(batch){setTimeout(function(){doBatch(batch)},delay);delay+=600});
 }
 
+try{var savedMin=localStorage.getItem('fec_min_raised');if(savedMin&&document.getElementById('minFilt'))document.getElementById('minFilt').value=savedMin}catch(e){}
 if(isClaudePreview){
   loadDemo();
 }else{
