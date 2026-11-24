@@ -118,9 +118,8 @@ function fK(n){if(n==null||isNaN(n))return"\u2014";if(n>=1e6)return"$"+(n/1e6).t
 function titleCase(s){return s.toLowerCase().replace(/(?:^|\s)\S/g,function(c){return c.toUpperCase()})}
 function fmtName(raw){if(!raw)return"Unknown";var p=raw.split(",");if(p.length>=2)return titleCase(p[1].trim().split(" ")[0])+" "+titleCase(p[0].trim());return titleCase(raw)}
 function setStatus(cls,html){var e=document.getElementById("sts");e.className="sts on "+cls;e.innerHTML=html}
-function setProg(pct,text){document.getElementById("prog").classList.add("on");document.getElementById("progFill").style.width=pct+"%";document.getElementById("progText").textContent=text}
 function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
-function colorScale(v,mx){if(!mx||!v)return"#e8e4db";var t=Math.min(v/mx,1);return"rgb("+Math.round(245-105*t)+","+Math.round(227-185*t)+","+Math.round(227-185*t)+")"}
+function colorScale(v,mx){if(!mx||!v)return"#e8e4db";var t=Math.sqrt(Math.min(v/mx,1));return"rgb("+Math.round(245-105*t)+","+Math.round(227-185*t)+","+Math.round(227-185*t)+")"}
 function txtCol(v,mx){return Math.sqrt(v/mx)>.4?"#fff":"var(--t)"}
 function stateData(list){var d={};list.forEach(function(m){if(!d[m.state])d[m.state]={code:m.state,name:m.sn,receipts:0,coh:0,disbursements:0,n:0,members:[]};var s=d[m.state];s.receipts+=m.receipts;s.coh+=m.coh;s.disbursements+=m.disbursements;s.n++;s.members.push(m)});return d}
 function getFiltered(){var q=document.getElementById("search").value.toLowerCase();var ty=document.getElementById("typFilt").value;var reg=document.getElementById("regionFilt").value;var f=ALL.slice();if(q)f=f.filter(function(m){return m.name.toLowerCase().indexOf(q)>=0||m.sn.toLowerCase().indexOf(q)>=0||m.state.toLowerCase()===q||m.dist.toLowerCase().indexOf(q)>=0});if(ty==="General"){
@@ -165,7 +164,6 @@ function render(){
 }
 
 var natStyle="map";
-var natSelState=null;
  // "map" (geographic, default) or "tiles"
 var stateGeo=null;
 var stateGeoLoading=false;
@@ -208,7 +206,7 @@ function renderNat(list){
     +legendHtml
     +'<div id="natMapArea"></div>'
     +'</div></div>'
-    +'<div id="natDetail"></div>'
+    
     +'<div class="g2"><div class="card"><div class="ch">Top 15 States</div><div class="cb"><div style="height:340px"><canvas id="c1"></canvas></div></div></div>'
     +'<div class="card"><div class="ch">Top 20 Fundraisers</div><div class="cb"><div style="height:340px"><canvas id="c2"></canvas></div></div></div></div>';
 
@@ -320,147 +318,6 @@ function renderNatTiles(sd,met,mx){
 }
 
 
-var detailSortCol="dist";
-var detailSortAsc=true;
-var detailState="";
-function detailSort(col){detailSortAsc=sortOn(col,detailSortCol,detailSortAsc);detailSortCol=col;renderNatDetail(detailState)}
-
-function renderNatDetail(st){
-  detailState=st;
-  var container=document.getElementById("natDetail");
-  if(!container){
-    var el=document.getElementById("view");
-    var div=document.createElement("div");
-    div.id="natDetail";
-    var charts=el.querySelector(".g2");
-    if(charts)el.insertBefore(div,charts);
-    else el.appendChild(div);
-    container=div;
-  }
-  var ty=document.getElementById("typFilt")?document.getElementById("typFilt").value:"";
-  var allMembers=ALL.filter(function(m){return m.state===st});
-  var members=allMembers;
-  if(ty==="General"){
-    var byD={};
-    allMembers.forEach(function(m){
-      if(!byD[m.dist]){byD[m.dist]=m}
-      else if(m.type==="Incumbent"){byD[m.dist]=m}
-      else if(byD[m.dist].type!=="Incumbent"&&m.receipts>byD[m.dist].receipts){byD[m.dist]=m}
-    });
-    members=Object.values(byD);
-  }else if(ty){members=allMembers.filter(function(m){return m.type===ty})};
-  if(!members.length){container.innerHTML="";return}
-  members=sortMembers(members,detailSortCol,detailSortAsc);
-  var stateName=SN[st]||st;
-
-  function dh(col,label,extra){var isA=detailSortCol===col;return '<th class="sortable'+(col!=="dist"&&col!=="name"?" r":"")+'" '+(extra||"")+' onclick="detailSort(\''+col+'\')">'+label+'<span class="arrow'+(isA?" on":"")+'"> '+(isA?(detailSortAsc?"&#9650;":"&#9660;"):"&#9650;")+'</span></th>'}
-
-  var rows="";
-  members.forEach(function(m){
-    var opp=OPP_BY_DIST[m.dist];
-    var dNum=m.dist.split("-")[1]||"";
-    if(dNum==="00")dNum="AL";
-    rows+='<tr style="cursor:pointer" onclick="showCandidate(\''+m.dist+'\')">'
-      +'<td><span class="bd">'+dNum+'</span></td>'
-      +'<td style="font-weight:600;color:var(--red)">'+m.name+'</td>'
-      +'<td class="mo">'+fK(m.receipts)+'</td>'
-      +'<td class="mo">'+fK(m.coh)+'</td>'
-      +'<td style="border-left:2px solid var(--b);font-weight:500;color:var(--blu);padding-left:12px">'+(opp?opp.name:'<span style="color:var(--d)">No opponent</span>')+'</td>'
-      +'<td class="mo">'+(opp?fK(opp.receipts):"\u2014")+'</td>'
-      +'<td class="mo">'+(opp?fK(opp.coh):"\u2014")+'</td>'
-      +'<td class="mo" style="font-weight:600;color:'+(opp?(m.coh>opp.coh?"var(--grn)":"var(--red)"):"var(--d)")+'">'+
-        (opp?(m.coh>opp.coh?"+":"")+fK(m.coh-opp.coh):"\u2014")+'</td>'
-      +'</tr>';
-  });
-
-  container.innerHTML='<div class="card" style="border-left:3px solid var(--red)"><div class="ch"><span>'+stateName+' ('+st+') \u2014 '+members.length+' race'+(members.length>1?"s":"")+'</span><button class="btn btn-ghost" onclick="natSelState=null;document.getElementById(\'natDetail\').innerHTML=\'\'" style="font-size:.7rem;padding:4px 10px">&#10005; Close</button></div>'
-    +'<div class="cb"><div id="stateDistMap" style="max-width:400px;margin:0 auto 12px"></div><div class="tw"><table>'
-    +'<thead><tr>'+dh("dist","District")+dh("name","Republican",'style="color:var(--red)"')+dh("receipts","Raised",'style="color:var(--red)"')+dh("coh","COH",'style="color:var(--red)"')
-    +'<th style="border-left:2px solid var(--b);padding-left:12px;color:var(--blu)">Opponent</th><th class="r" style="color:var(--blu)">Raised</th><th class="r" style="color:var(--blu)">COH</th>'
-    +'<th class="r">COH Adv.</th></tr></thead>'
-    +'<tbody>'+rows+'</tbody></table></div></div></div>';
-
-  // Render interactive district map for this state
-  var stFips=Object.keys(FIPS).find(function(k){return FIPS[k]===st});
-  if(stFips){
-    var mapDiv=document.getElementById("stateDistMap");
-    if(mapDiv){
-      mapDiv.style.maxWidth="600px";
-      mapDiv.innerHTML='<div style="text-align:center;color:var(--d);font-size:.72rem;padding:8px">Loading districts\u2026</div>';
-      var TIGER="https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Legislative/MapServer/0/query";
-      fetch(TIGER+"?where=STATE%3D%27"+stFips+"%27&outFields=GEOID,BASENAME&outSR=4326&f=geojson&maxAllowableOffset=0.005&geometryPrecision=5")
-        .then(function(r){return r.json()})
-        .then(function(gj){
-          if(!gj.features||!gj.features.length){mapDiv.innerHTML="";return}
-          var feats=gj.features.map(function(f){
-            var g=fixDistrictGeom(f.geometry);if(!g)return null;
-            var raw=String(f.properties.BASENAME||"").trim();
-            var dNum=/^\d+$/.test(raw)?String(+raw):"AL";
-            var dPad=dNum==="AL"?"00":String(dNum).padStart(2,"0");
-            return{type:"Feature",geometry:g,properties:{num:dNum,key:st+"-"+dPad}};
-          }).filter(Boolean);
-          if(!feats.length){mapDiv.innerHTML="";return}
-          var W=600,H=420;
-          var fc={type:"FeatureCollection",features:feats};
-          var proj=d3.geoMercator().fitExtent([[12,12],[W-12,H-12]],fc);
-          var path=d3.geoPath(proj);
-          var met2=document.getElementById("metricSel")?document.getElementById("metricSel").value:"receipts";
-          var mx2=Math.max.apply(null,members.map(function(m){return m[met2]}).concat([1]));
-          var byD={};members.forEach(function(m){byD[m.dist]=m});
-          mapDiv.innerHTML="";
-          var wrap=document.createElement("div");wrap.style.position="relative";
-          mapDiv.appendChild(wrap);
-          var svg=d3.select(wrap).append("svg").attr("viewBox","0 0 "+W+" "+H).attr("width","100%").style("display","block");
-          
-          var items=feats.map(function(f){
-            var d=path(f);if(!d)return null;
-            var c=path.centroid(f);
-            return{feat:f,d:d,c:c&&isFinite(c[0])&&isFinite(c[1])?c:null,num:f.properties.num,key:f.properties.key};
-          }).filter(Boolean);
-
-          svg.selectAll("path.dist").data(items).enter().append("path")
-            .attr("class","dist").attr("d",function(x){return x.d})
-            .attr("fill",function(x){var m=byD[x.key];return m?colorScale(m[met2],mx2):"#ece8e0"})
-            .attr("stroke","rgba(255,255,255,.8)").attr("stroke-width",1.2).style("cursor","pointer")
-            .on("mouseenter",function(ev,x){
-              d3.select(this).attr("stroke","#c9a227").attr("stroke-width",2.5);
-              var m=byD[x.key];
-              var hc=document.getElementById("stDistHover");
-              if(!hc){hc=document.createElement("div");hc.id="stDistHover";wrap.appendChild(hc)}
-              var h="";
-              if(m){h='<div style="font-weight:700;font-size:13px">'+m.name+'</div>'
-                +'<div style="font-size:11px;color:#6e7689;margin:2px 0 6px">District '+x.num+' \u00b7 '+m.type+'</div>'
-                +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>Raised</span><span style="font-family:var(--m);font-weight:600;color:var(--red)">'+fK(m.receipts)+'</span></div>'
-                +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fK(m.coh)+'</span></div>'
-                +'<div style="display:flex;justify-content:space-between;font-size:11px"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fK(m.disbursements)+'</span></div>'
-                +'<div style="font-size:10px;color:var(--red);margin-top:6px;font-weight:600">Click for full details</div>';
-              }else{h='<div style="font-weight:700;font-size:13px">District '+x.num+'</div><div style="font-size:11px;color:#6e7689">No Republican candidate</div>'}
-              hc.innerHTML=h;
-              if(x.c){hc.style.cssText="position:absolute;background:var(--s);border:1px solid var(--b);border-radius:8px;padding:10px 12px;pointer-events:none;z-index:5;min-width:200px;box-shadow:0 8px 24px rgba(0,0,0,.15);left:"+Math.min(70,Math.max(0,x.c[0]/W*100+2))+"%;top:"+Math.min(60,Math.max(0,x.c[1]/H*100))+"%"}
-              hc.style.display="block";
-            })
-            .on("mouseleave",function(){
-              d3.select(this).attr("stroke","rgba(255,255,255,.8)").attr("stroke-width",1.2);
-              var hc=document.getElementById("stDistHover");if(hc)hc.style.display="none";
-            })
-            .on("click",function(ev,x){var m=byD[x.key];if(m)showCandidate(x.key)});
-
-          // District number labels
-          svg.selectAll("text.dlabel").data(items.filter(function(x){return x.c})).enter().append("text")
-            .attr("class","dlabel")
-            .attr("x",function(x){return x.c[0]}).attr("y",function(x){return x.c[1]})
-            .attr("text-anchor","middle").attr("dominant-baseline","central")
-            .attr("font-size",items.length>20?"9px":items.length>10?"11px":"14px")
-            .attr("font-weight","700")
-            .attr("fill",function(x){var m=byD[x.key];return m?txtCol(m[met2],mx2):"#999"})
-            .attr("pointer-events","none")
-            .text(function(x){return x.num});
-        })
-        .catch(function(){mapDiv.innerHTML=""});
-    }
-  }
-}
-
 
 
 function showStatePanel(st){
@@ -476,7 +333,8 @@ function showStatePanel(st){
   var stMx=Math.max.apply(null,members.map(function(m){return m[met]}).concat([1]));
 
   // Build race list rows
-  var raceRows="";
+  var totR=0,totC=0;members.forEach(function(m){totR+=m.receipts;totC+=m.coh});
+  var raceRows='<div style="display:grid;grid-template-columns:44px minmax(0,1fr) 80px 80px;gap:8px;align-items:center;padding:8px 12px;border-bottom:2px solid var(--b);font-size:12px;font-weight:700;background:var(--s2)"><span></span><span>Total</span><span style="font-family:var(--m);text-align:right;color:var(--red)">'+fK(totR)+'</span><span style="font-family:var(--m);text-align:right">'+fK(totC)+'</span></div>';
   members.forEach(function(m,i){
     var dNum=m.dist.split("-")[1]||"";if(dNum==="00")dNum="AL";
     raceRows+='<div class="sp-row" data-dist="'+m.dist+'" onclick="document.querySelector(\'.sp-overlay\').remove();showCandidate(\''+m.dist+'\')" style="display:grid;grid-template-columns:44px minmax(0,1fr) 80px 80px;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--b);cursor:pointer;font-size:12px" onmouseenter="this.style.background=\'var(--s2)\'" onmouseleave="this.style.background=\'\'">'
@@ -506,7 +364,7 @@ function showStatePanel(st){
     +'<div style="flex:1;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,1fr);min-height:0;overflow:hidden">'
     +'<div style="border-right:1px solid var(--b);display:flex;flex-direction:column;min-height:0">'
     +'<div style="padding:12px 20px 8px;font-size:14px;font-weight:700">Districts \u2014 '+ml+'</div>'
-    +'<div id="spMap" style="flex:1;min-height:0;padding:0 20px;position:relative;display:flex;align-items:center;justify-content:center"><div style="color:var(--d);font-size:12px">Loading districts\u2026</div></div>'
+    +'<div id="spMap" style="flex:1;min-height:0;padding:0 20px;position:relative;display:flex;align-items:center;justify-content:center"><div style="color:var(--d);font-size:12px;animation:pulse 1.5s infinite">Loading districts\u2026</div></div>'
     +'<div style="padding:4px 20px 10px;font-size:10px;color:var(--d);text-align:center">Hover for details \u00b7 Click for full profile</div></div>'
     +'<div style="display:flex;flex-direction:column;min-height:0">'
     +'<div style="padding:12px 16px;display:grid;grid-template-columns:44px minmax(0,1fr) 80px 80px;gap:8px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--d);border-bottom:1px solid var(--b)"><span>Dist</span><span>Candidate</span><span style="text-align:right">Raised</span><span style="text-align:right">COH</span></div>'
@@ -514,11 +372,13 @@ function showStatePanel(st){
 
   overlay.appendChild(panel);
   document.body.appendChild(overlay);
+  function spEsc(e){if(e.key==="Escape"){overlay.remove();document.removeEventListener("keydown",spEsc)}}
+  document.addEventListener("keydown",spEsc);
 
   // Add CSS animation
   if(!document.getElementById("spStyle")){
     var sty=document.createElement("style");sty.id="spStyle";
-    sty.textContent="@keyframes fadeIn{from{opacity:0}to{opacity:1}}.sp-overlay{animation:fadeIn .15s}@media(max-width:768px){.sp-overlay>div>div:last-child{grid-template-columns:1fr!important;grid-template-rows:auto 1fr!important}}";
+    sty.textContent="@keyframes fadeIn{from{opacity:0}to{opacity:1}}@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}.sp-overlay{animation:fadeIn .15s}@media(max-width:768px){.sp-overlay>div>div:last-child{grid-template-columns:1fr!important;grid-template-rows:auto 1fr!important}}";
     document.head.appendChild(sty);
   }
 
@@ -620,63 +480,7 @@ function showCandidate(dist){
   var el=document.createElement("div");el.innerHTML=h;document.body.appendChild(el.firstChild);
 }
 
-function showOnMap(st){
-  curTab="congress";
-  render();
-  // After map renders, trigger the detail panel
-  setTimeout(function(){renderNatDetail(st)},100);
-  // Highlight the state on the map by adding a visual indicator
-  setTimeout(function(){
-    var paths=document.querySelectorAll("#distMap path");
-    paths.forEach(function(p){
-      var d=p.__data__;
-      if(d&&FIPS[d.id]===st){
-        p.setAttribute("stroke","#14213d");
-        p.setAttribute("stroke-width","3");
-      }
-    });
-  },200);
-}
 
-var congSortCol="coh";
-var congSortAsc=true;
-function congSort(col){congSortAsc=sortOn(col,congSortCol,congSortAsc);congSortCol=col;render()}
-
-var districtGeo=null;
-var districtLoading=false;
-
-function loadDistricts(cb){
-  if(districtGeo){cb(districtGeo);return}
-  // Load all congressional districts from TIGERweb (same source as election-results app)
-  var NAT_CD_URL="https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Legislative/MapServer/0/query?where=1%3D1&outFields=GEOID,BASENAME,STATE&outSR=4326&f=geojson&maxAllowableOffset=0.02&geometryPrecision=3";
-  fetch(NAT_CD_URL)
-    .then(function(r){if(!r.ok)throw new Error("HTTP "+r.status);return r.json()})
-    .then(function(gj){
-      if(!gj.features||!gj.features.length)throw new Error("Empty");
-      districtGeo=gj.features.map(function(f){
-        var geoid=f.properties.GEOID||"";
-        var stFips=geoid.substring(0,2)||f.properties.STATE||"";
-        var dist=geoid.substring(2)||f.properties.BASENAME||"00";
-        if(dist==="00"||dist.toLowerCase()==="al")dist="00";
-        f.id=stFips+String(dist).padStart(2,"0");
-        return f;
-      });
-      districtGeo._projected=false;
-      cb(districtGeo);
-    })
-    .catch(function(err){
-      console.log("TIGERweb failed:",err,". Falling back to state boundaries.");
-      // Fallback: embedded states TopoJSON
-      var features=topojson.feature(STATES_TOPO,STATES_TOPO.objects.states).features;
-      features.forEach(function(f){f._isState=true});
-      districtGeo=features;
-      districtGeo._projected=true;
-      districtGeo._mesh=topojson.mesh(STATES_TOPO,STATES_TOPO.objects.states,function(a,b){return a!==b});
-      cb(features);
-    });
-}
-
-// FIPS to state abbreviation
 var FIPS={
   "01":"AL","02":"AK","04":"AZ","05":"AR","06":"CA","08":"CO","09":"CT","10":"DE",
   "11":"DC","12":"FL","13":"GA","15":"HI","16":"ID","17":"IL","18":"IN","19":"IA",
@@ -725,7 +529,6 @@ function renderCong(list){
   var byDist={};
   list.forEach(function(m){var key=m.dist;if(!byDist[key])byDist[key]=[];byDist[key].push(m)});
 
-  if(congDrillState){renderCongDrill(congDrillState,list,byDist,met);return}
 
   var vals=list.map(function(m){return m[met]});
   var mx=Math.max.apply(null,vals.concat([1]));
@@ -821,7 +624,7 @@ function renderCong(list){
     svg.selectAll("path").data(features).enter().append("path").attr("d",d3.geoPath())
       .attr("fill",function(d){var s=byFips[d.id];if(!s)return"#ece8e0";return colorScale(s.r/s.n,stMx)})
       .attr("stroke","#8a8070").attr("stroke-width",0.8).style("cursor","pointer")
-      .on("click",function(ev,d){var st=FIPS[d.id];if(st){congDrillState=st;render()}});
+      .on("click",function(ev,d){var st=FIPS[d.id];if(st)showStatePanel(st)});
     container.insertAdjacentHTML("beforeend",'<div style="font-size:11px;color:var(--d);margin-top:6px;text-align:center">State view (district boundaries loading failed). Click a state to view districts.</div>');
   });
 
@@ -834,92 +637,6 @@ function renderCong(list){
   }
 }
 
-var congDrillState=null;
-
-function renderCongDrill(st,list,byDist,met,mx){
-  var stateName=SN[st]||st;
-  var stMembers=list.filter(function(m){return m.state===st});
-  if(!stMembers.length){congDrillState=null;render();return}
-  var stMx=Math.max.apply(null,stMembers.map(function(m){return m[met]}).concat([1]));
-  var ml={receipts:"Raised",coh:"Cash on Hand",disbursements:"Spent"}[met];
-  var ty=document.getElementById("typFilt")?document.getElementById("typFilt").value:"";
-  var members=stMembers;
-  if(ty==="General"){var byD={};stMembers.forEach(function(m){if(!byD[m.dist])byD[m.dist]=m;else if(m.type==="Incumbent")byD[m.dist]=m;else if(byD[m.dist].type!=="Incumbent"&&m.receipts>byD[m.dist].receipts)byD[m.dist]=m});members=Object.values(byD)}
-  else if(ty){members=stMembers.filter(function(m){return m.type===ty})}
-  members=sortMembers(members,detailSortCol,detailSortAsc);
-
-  function dh(col,label){var isA=detailSortCol===col;return '<th class="sortable'+(col!=="dist"&&col!=="name"?" r":"")+'" onclick="detailSort(\''+col+'\')">'+label+'<span class="arrow'+(isA?" on":"")+'"> '+(isA?(detailSortAsc?"&#9650;":"&#9660;"):"&#9650;")+'</span></th>'}
-  var rows="";
-  members.forEach(function(m){
-    var dNum=m.dist.split("-")[1]||"";if(dNum==="00")dNum="AL";
-    rows+='<tr style="cursor:pointer" onclick="showCandidate(\''+m.dist+'\')">'
-      +'<td><span class="bd">'+dNum+'</span></td>'
-      +'<td style="font-weight:600;color:var(--red)">'+m.name+'</td>'
-      +'<td class="mo">'+fK(m.receipts)+'</td>'
-      +'<td class="mo">'+fK(m.coh)+'</td>'
-      +'<td class="mo">'+fK(m.disbursements)+'</td></tr>';
-  });
-
-  document.getElementById("view").innerHTML='<div class="card" style="border-left:3px solid var(--red)">'
-    +'<div class="ch"><span style="display:flex;align-items:center;gap:8px"><button class="btn btn-ghost" onclick="congDrillState=null;render()" style="font-size:.7rem;padding:4px 10px">\u2190 All States</button><span style="font-weight:700;font-size:1.05rem">'+stateName+'</span><span style="color:var(--d);font-size:.8rem">'+members.length+' district'+(members.length>1?"s":"")+'</span></span></div>'
-    +'<div class="cb" style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">'
-    +'<div id="drillMap" style="flex:1 1 320px;min-width:280px;position:relative"><div style="text-align:center;color:var(--d);padding:20px">Loading districts\u2026</div></div>'
-    +'<div style="flex:1 1 360px;min-width:300px;overflow-x:auto"><table style="width:100%"><thead><tr>'
-    +dh("dist","Dist")+dh("name","Candidate")+dh("receipts","Raised")+dh("coh","COH")+dh("disbursements","Spent")
-    +'</tr></thead><tbody>'+rows+'</tbody></table></div>'
-    +'</div></div>';
-
-  var stFips=Object.keys(FIPS).find(function(k){return FIPS[k]===st});
-  if(!stFips)return;
-  var TIGER="https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Legislative/MapServer/0/query";
-  fetch(TIGER+"?where=STATE%3D%27"+stFips+"%27&outFields=GEOID,BASENAME&outSR=4326&f=geojson&maxAllowableOffset=0.005&geometryPrecision=5")
-    .then(function(r){return r.json()})
-    .then(function(gj){
-      if(!gj.features||!gj.features.length)return;
-      var feats=gj.features.map(function(f){
-        var g=fixDistrictGeom(f.geometry);if(!g)return null;
-        var raw=String(f.properties.BASENAME||"").trim();
-        var dNum=/^\d+$/.test(raw)?String(+raw):"AL";
-        var dPad=dNum==="AL"?"00":String(dNum).padStart(2,"0");
-        return{type:"Feature",geometry:g,properties:{num:dNum,key:st+"-"+dPad}};
-      }).filter(Boolean);
-      if(!feats.length)return;
-      var mapDiv=document.getElementById("drillMap");mapDiv.innerHTML="";
-      var wrap=document.createElement("div");wrap.style.position="relative";mapDiv.appendChild(wrap);
-      var W=560,H=440;
-      var proj=d3.geoMercator().fitExtent([[8,8],[W-8,H-8]],{type:"FeatureCollection",features:feats});
-      var path=d3.geoPath(proj);
-      var byD2={};members.forEach(function(m){byD2[m.dist]=m});
-      var items=feats.map(function(f){var d=path(f);if(!d)return null;var c=path.centroid(f);return{feat:f,d:d,c:c&&isFinite(c[0])&&isFinite(c[1])?c:null,num:f.properties.num,key:f.properties.key}}).filter(Boolean);
-      var svg=d3.select(wrap).append("svg").attr("viewBox","0 0 "+W+" "+H).attr("width","100%").style("display","block");
-      svg.selectAll("path.dist").data(items).enter().append("path")
-        .attr("class","dist").attr("d",function(x){return x.d})
-        .attr("fill",function(x){var m=byD2[x.key];if(!m)return"#ece8e0";return colorScale(m[met],stMx)})
-        .attr("stroke","rgba(255,255,255,.8)").attr("stroke-width",1).style("cursor","pointer")
-        .on("mouseenter",function(ev,x){
-          d3.select(this).attr("stroke","#c9a227").attr("stroke-width",2.5);
-          var m=byD2[x.key];
-          var hc=document.getElementById("drillHover");
-          if(!hc){hc=document.createElement("div");hc.id="drillHover";wrap.appendChild(hc)}
-          var h="";
-          if(m){h='<div style="font-weight:700;font-size:13px">'+m.name+'</div><div style="font-size:11px;color:#6e7689;margin:2px 0 6px">District '+x.num+' \u00b7 '+m.type+'</div><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>Raised</span><span style="font-family:var(--m);font-weight:600;color:var(--red)">'+fK(m.receipts)+'</span></div><div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fK(m.coh)+'</span></div><div style="display:flex;justify-content:space-between;font-size:11px"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fK(m.disbursements)+'</span></div><div style="font-size:10px;color:var(--red);margin-top:6px;font-weight:600">Click for full details</div>'}
-          else{h='<div style="font-weight:700;font-size:13px">District '+x.num+'</div><div style="font-size:11px;color:#6e7689">No Republican candidate</div>'}
-          hc.innerHTML=h;
-          if(x.c){hc.style.cssText="position:absolute;background:var(--s);border:1px solid var(--b);border-radius:8px;padding:10px 12px;pointer-events:none;z-index:5;min-width:200px;box-shadow:0 8px 24px rgba(0,0,0,.15);left:"+Math.min(70,Math.max(0,x.c[0]/W*100+2))+"%;top:"+Math.min(60,Math.max(0,x.c[1]/H*100))+"%"}
-          hc.style.display="block";
-        })
-        .on("mouseleave",function(){d3.select(this).attr("stroke","rgba(255,255,255,.8)").attr("stroke-width",1);var hc=document.getElementById("drillHover");if(hc)hc.style.display="none"})
-        .on("click",function(ev,x){var m=byD2[x.key];if(m)showCandidate(x.key)});
-      svg.selectAll("text.dlabel").data(items.filter(function(x){return x.c})).enter().append("text")
-        .attr("class","dlabel").attr("x",function(x){return x.c[0]}).attr("y",function(x){return x.c[1]})
-        .attr("text-anchor","middle").attr("dominant-baseline","central")
-        .attr("font-size",items.length>20?"9px":items.length>10?"12px":"15px")
-        .attr("font-weight","700")
-        .attr("fill",function(x){var m=byD2[x.key];return m?txtCol(m[met],stMx):"#999"})
-        .attr("pointer-events","none").text(function(x){return x.num});
-      wrap.insertAdjacentHTML("beforeend",'<div style="font-size:10px;color:var(--d);margin-top:4px;text-align:center">'+items.length+' districts \u00b7 hover for details \u00b7 click for full profile</div>');
-    }).catch(function(){var mapDiv=document.getElementById("drillMap");if(mapDiv)mapDiv.innerHTML='<div style="color:var(--d);font-size:.8rem;padding:12px">District map unavailable</div>'});
-}
 
 function renderList(list){
   var sd=stateData(list);
@@ -1097,7 +814,7 @@ function loadFEC(){
     setStatus("ok","Loading from API...");
     tryVercel().catch(function(e2){
       tryLocal().catch(function(e3){
-        setStatus("err","Could not load data. Errors: "+e1.message+"; "+e2.message+"; "+e3.message);
+        setStatus("err","Could not load data. Please refresh the page.");
         ALL=[];render();
       });
     });
