@@ -119,8 +119,8 @@ function titleCase(s){return s.toLowerCase().replace(/(?:^|\s)\S/g,function(c){r
 function fmtName(raw){if(!raw)return"Unknown";var p=raw.split(",");if(p.length>=2)return titleCase(p[1].trim().split(" ")[0])+" "+titleCase(p[0].trim());return titleCase(raw)}
 function setStatus(cls,html){var e=document.getElementById("sts");e.className="sts on "+cls;e.innerHTML=html}
 function css(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim()}
-function colorScale(v,mx){if(!mx||!v)return"#e8e4db";var t=Math.sqrt(Math.min(v/mx,1));return"rgb("+Math.round(245-105*t)+","+Math.round(227-185*t)+","+Math.round(227-185*t)+")"}
-function txtCol(v,mx){return Math.sqrt(v/mx)>.4?"#fff":"var(--t)"}
+function colorScale(v,mx){if(!v||v<=0)return"#ece8e0";if(!mx)return"#e8e4db";var t=Math.sqrt(Math.min(v/mx,1));return"rgb("+Math.round(245-105*t)+","+Math.round(227-185*t)+","+Math.round(227-185*t)+")"}
+function txtCol(v,mx){if(!mx||!v)return"#555";var t=Math.sqrt(Math.min(v/mx,1));return t>.5?"#fff":"#1a1a2e"}
 function stateData(list){var d={};list.forEach(function(m){if(!d[m.state])d[m.state]={code:m.state,name:m.sn,receipts:0,coh:0,disbursements:0,n:0,members:[]};var s=d[m.state];s.receipts+=m.receipts;s.coh+=m.coh;s.disbursements+=m.disbursements;s.n++;s.members.push(m)});return d}
 function getFiltered(){var q=document.getElementById("search").value.toLowerCase();var ty=document.getElementById("typFilt").value;var reg=document.getElementById("regionFilt").value;var f=ALL.slice();if(q)f=f.filter(function(m){return m.name.toLowerCase().indexOf(q)>=0||m.sn.toLowerCase().indexOf(q)>=0||m.state.toLowerCase()===q||m.dist.toLowerCase().indexOf(q)>=0});if(ty==="General"){
       // One candidate per district: incumbent if exists, else top raiser
@@ -427,10 +427,10 @@ function showStatePanel(st){
       svg.selectAll("text.dlabel").data(items.filter(function(x){return x.c})).enter().append("text")
         .attr("class","dlabel").attr("x",function(x){return x.c[0]}).attr("y",function(x){return x.c[1]})
         .attr("text-anchor","middle").attr("dominant-baseline","central")
-        .attr("font-size",items.length>20?"9px":items.length>10?"12px":"15px")
+        .attr("font-size",items.length>30?"8px":items.length>15?"10px":items.length>5?"13px":"16px")
         .attr("font-weight","700")
         .attr("fill",function(x){var m=byD2[x.key];return m?txtCol(m[met],stMx):"#999"})
-        .attr("pointer-events","none").text(function(x){return x.num});
+        .attr("pointer-events","none").style("text-shadow","0 0 3px rgba(255,255,255,.7), 0 0 3px rgba(255,255,255,.7)").attr("paint-order","stroke").attr("stroke",function(x){var m=byDist[x.key];if(!m||!m.length)return"rgba(255,255,255,.5)";var t=Math.sqrt(Math.min(m[0][met]/mx,1));return t>.5?"rgba(0,0,0,.3)":"rgba(255,255,255,.6)"}).attr("stroke-width","2.5px").text(function(x){return x.num});
     })();
 }
 
