@@ -405,7 +405,7 @@ function showStatePanel(st){
       var proj=d3.geoMercator().fitExtent([[8,8],[W-8,H-8]],{type:"FeatureCollection",features:feats});
       var path=d3.geoPath(proj);
       var byD2={};members.forEach(function(m){byD2[m.dist]=m});
-      var items=feats.map(function(f){var d=path(f);if(!d)return null;var c=path.centroid(f);return{d:d,c:c&&isFinite(c[0])&&isFinite(c[1])?c:null,num:f.properties.num,key:f.properties.key}}).filter(Boolean);
+      var items=feats.map(function(f){var d=path(f);if(!d)return null;var c=path.centroid(f);var b=path.bounds(f);var bw=b?Math.abs(b[1][0]-b[0][0]):20;var bh=b?Math.abs(b[1][1]-b[0][1]):20;return{d:d,c:c&&isFinite(c[0])&&isFinite(c[1])?c:null,num:f.properties.num,key:f.properties.key,bw:bw,bh:bh}}).filter(Boolean);
       var svg=d3.select(wrap).append("svg").attr("viewBox","0 0 "+W+" "+H).attr("width","100%").style("display","block");
       svg.selectAll("path.dist").data(items).enter().append("path")
         .attr("class","dist").attr("d",function(x){return x.d})
@@ -427,10 +427,10 @@ function showStatePanel(st){
       svg.selectAll("text.dlabel").data(items.filter(function(x){return x.c})).enter().append("text")
         .attr("class","dlabel").attr("x",function(x){return x.c[0]}).attr("y",function(x){return x.c[1]})
         .attr("text-anchor","middle").attr("dominant-baseline","central")
-        .attr("font-size",items.length>30?"8px":items.length>15?"10px":items.length>5?"13px":"16px")
+        .attr("font-size",function(x){var sz=Math.min(x.bw,x.bh)*0.4;return Math.max(6,Math.min(16,sz))+"px"})
         .attr("font-weight","700")
         .attr("fill",function(x){var m=byD2[x.key];return m?txtCol(m[met],stMx):"#999"})
-        .attr("pointer-events","none").style("text-shadow","0 0 3px rgba(255,255,255,.7), 0 0 3px rgba(255,255,255,.7)").attr("paint-order","stroke").attr("stroke",function(x){var m=byDist[x.key];if(!m||!m.length)return"rgba(255,255,255,.5)";var t=Math.sqrt(Math.min(m[0][met]/mx,1));return t>.5?"rgba(0,0,0,.3)":"rgba(255,255,255,.6)"}).attr("stroke-width","2.5px").text(function(x){return x.num});
+        .attr("pointer-events","none").attr("paint-order","stroke").attr("stroke",function(x){var m=byD2[x.key];if(!m)return"rgba(255,255,255,.6)";var t=Math.sqrt(Math.min(m[met]/stMx,1));return t>.5?"rgba(0,0,0,.35)":"rgba(255,255,255,.7)"}).attr("stroke-width",function(x){var sz=Math.min(x.bw,x.bh)*0.4;return Math.max(1.5,Math.min(3,sz*0.25))+"px"}).text(function(x){return x.num});
     })();
 }
 
