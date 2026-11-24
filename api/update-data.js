@@ -9,7 +9,7 @@ async function fetchJSON(url) {
   if (r.status === 429) {
     await new Promise(r => setTimeout(r, 15000));
     const r2 = await fetch(url);
-    if (!r2.ok) throw new Error("HTTP " + r2.status + " after retry");
+    if (!r2.ok) throw new Error("HTTP " + r2.status);
     return r2.json();
   }
   if (!r.ok) throw new Error("HTTP " + r.status);
@@ -35,12 +35,16 @@ async function fetchCycle(cycle) {
   return Object.values(seen);
 }
 
-async function fetchReports(candidates, cycle) {
+async function fetchReportsBatch(candidates, cycle, startIdx, maxTime) {
   const RL = {Q1:"Q1",Q2:"Q2",Q3:"Q3",Q4:"Q4","12P":"Pre-Primary","12C":"Pre-Convention","12G":"Pre-General","30G":"Post-General",YE:"Year-End",MY:"Mid-Year"};
   const reports = {};
+  const deadline = Date.now() + maxTime;
   const cyclesToFetch = [cycle, cycle - 2];
+  let processed = startIdx;
+  
   for (const cy of cyclesToFetch) {
-    for (let i = 0; i < candidates.length; i++) {
+    for (let i = (cy === cycle ? startIdx : 0); i < candidates.length; i++) {
+      if (Date.now() > deadline) return { reports, processed, done: false };
       const cid = candidates[i].candidate_id;
       try {
         const d = await fetchJSON(`${BASE}/reports/house-senate/?api_key=${FEC_KEY}&candidate_id=${cid}&cycle=${cy}&per_page=100&sort_by=-coverage_end_date`);
@@ -56,30 +60,38 @@ async function fetchReports(candidates, cycle) {
           });
         }
       } catch (e) {}
-      await sleep(400);
+      await sleep(500);
+      processed = i + 1;
     }
   }
   Object.keys(reports).forEach(k => { reports[k].sort((a, b) => (b.end || "").localeCompare(a.end || "")); });
-  return reports;
+  return { reports, processed, done: true };
 }
 
-async function commitToGitHub(data, ghToken) {
-  const content = Buffer.from(JSON.stringify(data)).toString("base64");
-  let sha = null;
+async function getExistingData(ghToken) {
   try {
     const r = await fetch(`https://api.github.com/repos/${REPO}/contents/data.json`, { headers: { Authorization: "Bearer " + ghToken } });
-    if (r.ok) { const d = await r.json(); sha = d.sha; }
+    if (r.ok) {
+      const d = await r.json();
+      return { data: JSON.parse(Buffer.from(d.content, "base64").toString()), sha: d.sha };
+    }
   } catch (e) {}
+  return { data: { updated: new Date().toISOString(), cycles: {} }, sha: null };
+}
+
+async function commitToGitHub(data, ghToken, sha) {
+  const content = Buffer.from(JSON.stringify(data)).toString("base64");
   const body = { message: "Auto-update FEC data " + new Date().toISOString().split("T")[0], content };
   if (sha) body.sha = sha;
-  const r2 = await fetch(`https://api.github.com/repos/${REPO}/contents/data.json`, {
+  const r = await fetch(`https://api.github.com/repos/${REPO}/contents/data.json`, {
     method: "PUT", headers: { Authorization: "Bearer " + ghToken, "Content-Type": "application/json" }, body: JSON.stringify(body)
   });
-  if (!r2.ok) throw new Error("GitHub commit failed: " + r2.status);
+  if (!r.ok) throw new Error("GitHub commit failed: " + r.status);
+  const d = await r.json();
+  return d.content ? d.content.sha : sha;
 }
 
 export default async function handler(req, res) {
-  // Verify this is a cron call or has the right secret
   const authHeader = req.headers.authorization;
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && authHeader !== "Bearer " + cronSecret) {
@@ -89,35 +101,43 @@ export default async function handler(req, res) {
   const ghToken = process.env.GITHUB_TOKEN;
   if (!ghToken) return res.status(500).json({ error: "GITHUB_TOKEN not set" });
   
+  const startTime = Date.now();
+  
   try {
-    // Load existing data.json from GitHub
-    let data = { updated: new Date().toISOString(), cycles: {} };
-    try {
-      const r = await fetch(`https://api.github.com/repos/${REPO}/contents/data.json`, { headers: { Authorization: "Bearer " + ghToken } });
-      if (r.ok) {
-        const d = await r.json();
-        data = JSON.parse(Buffer.from(d.content, "base64").toString());
-      }
-    } catch (e) {}
+    // Load existing data
+    const { data, sha: existingSha } = await getExistingData(ghToken);
     
-    // Update current cycle candidates
+    // Determine current cycle
     const currentYear = new Date().getFullYear();
     const cycle = currentYear % 2 === 0 ? currentYear : currentYear + 1;
+    
+    // Update candidates for current cycle
     data.cycles[cycle] = await fetchCycle(cycle);
     data.updated = new Date().toISOString();
     
-    // Commit candidates first
-    await commitToGitHub(data, ghToken);
+    // Commit candidates immediately
+    let sha = await commitToGitHub(data, ghToken, existingSha);
     
-    // Update quarterly for current cycle (incumbents + top fundraisers)
-    const inc = (data.cycles[cycle] || []).filter(c => c.incumbent_challenge === "I" || (c.receipts || 0) > 50000);
-    if (inc.length) {
-      data.cycles[cycle + "_reports"] = await fetchReports(inc, cycle);
+    // Now fetch quarterly reports with remaining time (leave 30s buffer)
+    const timeLeft = 300000 - (Date.now() - startTime) - 30000;
+    if (timeLeft > 60000) {
+      const inc = (data.cycles[cycle] || []).filter(c => c.incumbent_challenge === "I" || (c.receipts || 0) > 50000);
+      
+      // Merge with existing reports (don't lose old data)
+      const existingReports = data.cycles[cycle + "_reports"] || {};
+      const { reports, processed, done } = await fetchReportsBatch(inc, cycle, 0, timeLeft);
+      
+      // Merge new reports with existing
+      Object.keys(reports).forEach(cid => { existingReports[cid] = reports[cid]; });
+      data.cycles[cycle + "_reports"] = existingReports;
       data.updated = new Date().toISOString();
-      await commitToGitHub(data, ghToken);
+      
+      sha = await commitToGitHub(data, ghToken, sha);
+      
+      res.json({ ok: true, cycle, candidates: (data.cycles[cycle] || []).length, reportsProcessed: processed, reportsDone: done, totalReports: Object.keys(existingReports).length });
+    } else {
+      res.json({ ok: true, cycle, candidates: (data.cycles[cycle] || []).length, note: "No time for quarterly update" });
     }
-    
-    res.json({ ok: true, cycle, candidates: (data.cycles[cycle] || []).length, reports: Object.keys(data.cycles[cycle + "_reports"] || {}).length });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
