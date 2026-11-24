@@ -351,7 +351,7 @@ function showStatePanel(st){
   overlay.onclick=function(e){if(e.target===overlay)overlay.remove()};
 
   var panel=document.createElement("div");
-  panel.style.cssText="width:min(1200px,100%);height:min(90vh,860px);background:var(--s);border:1px solid var(--b);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(15,26,46,.3)";
+  panel.style.cssText="width:min(1100px,100%);height:min(80vh,720px);background:var(--s);border:1px solid var(--b);border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 80px rgba(15,26,46,.3)";
   panel.onclick=function(e){e.stopPropagation()};
 
   // Header
@@ -364,7 +364,7 @@ function showStatePanel(st){
     +'<div style="flex:1;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(320px,1fr);min-height:0;overflow:hidden">'
     +'<div style="border-right:1px solid var(--b);display:flex;flex-direction:column;min-height:0">'
     +'<div style="padding:12px 20px 8px;font-size:14px;font-weight:700">Districts \u2014 '+ml+'</div>'
-    +'<div id="spMap" style="flex:1;min-height:0;padding:0 20px;position:relative;display:flex;align-items:center;justify-content:center"><div style="color:var(--d);font-size:12px;animation:pulse 1.5s infinite">Loading districts\u2026</div></div>'
+    +'<div id="spMap" style="flex:1;min-height:0;max-height:360px;padding:0 20px;position:relative;display:flex;align-items:center;justify-content:center"><div style="color:var(--d);font-size:12px;animation:pulse 1.5s infinite">Loading districts\u2026</div></div>'
     +'<div style="padding:4px 20px 10px;font-size:10px;color:var(--d);text-align:center">Hover for details \u00b7 Click for full profile</div></div>'
     +'<div style="display:flex;flex-direction:column;min-height:0">'
     +'<div style="padding:12px 16px;display:grid;grid-template-columns:44px minmax(0,1fr) 80px 80px;gap:8px;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--d);border-bottom:1px solid var(--b)"><span>Dist</span><span>Candidate</span><span style="text-align:right">Raised</span><span style="text-align:right">COH</span></div>'
@@ -403,7 +403,7 @@ function showStatePanel(st){
       mapDiv.innerHTML="";
       var wrap=document.createElement("div");wrap.style.cssText="position:relative;width:100%";
       mapDiv.appendChild(wrap);
-      var W=560,H=440;
+      var W=400,H=300;
       var proj=d3.geoMercator().fitExtent([[8,8],[W-8,H-8]],{type:"FeatureCollection",features:feats});
       var path=d3.geoPath(proj);
       var byD2={};members.forEach(function(m){byD2[m.dist]=m});
