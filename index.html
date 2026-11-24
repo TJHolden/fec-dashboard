@@ -604,9 +604,9 @@ function renderCong(list){
     });
 
     var W=975,H=610;
-    // Use embedded state features to fit projection (same as election-results)
-    var usFeats=topojson.feature(STATES_TOPO,STATES_TOPO.objects.states).features;
-    var proj=d3.geoAlbersUsa().fitExtent([[0,0],[W,H]],{type:"FeatureCollection",features:usFeats});
+    // Fit projection to the district features (unprojected lat/lng from TIGERweb)
+    var distFC={type:"FeatureCollection",features:kept.map(function(k){return k.feat})};
+    var proj=d3.geoAlbersUsa().fitExtent([[0,0],[W,H]],distFC);
     var path=d3.geoPath(proj);
 
     // Compute paths and centroids
@@ -671,12 +671,19 @@ function renderCong(list){
         congDrillState=x.abbr;render();
       });
 
-    // State outlines on top (same as election-results)
-    if(stOutline){
-      svg.append("path").attr("d",stOutline)
-        .attr("fill","none").attr("stroke","rgba(60,70,90,.55)").attr("stroke-width",0.9)
-        .style("pointer-events","none");
-    }
+    // State outlines: group districts by state and draw merged boundaries
+    var byStFeat={};
+    kept.forEach(function(k){if(!byStFeat[k.abbr])byStFeat[k.abbr]=[];byStFeat[k.abbr].push(k.feat)});
+    Object.keys(byStFeat).forEach(function(st){
+      var stFeats=byStFeat[st];
+      if(stFeats.length<1)return;
+      // Draw each state's merged outline
+      stFeats.forEach(function(f){
+        svg.append("path").attr("d",path(f))
+          .attr("fill","none").attr("stroke","rgba(60,70,90,.4)").attr("stroke-width",0.9)
+          .style("pointer-events","none");
+      });
+    });
 
     // Count
     wrap.insertAdjacentHTML("beforeend",'<div style="font-size:11px;color:var(--d);margin-top:6px;text-align:center">'+items.length+' districts \u00b7 hover for details \u00b7 click to open state</div>');
