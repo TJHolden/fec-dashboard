@@ -206,7 +206,7 @@ function renderNat(list){
 
   document.getElementById("view").innerHTML='<div class="card"><div class="ch"><span>National \u2014 '+ml+' by State</span>'+toggleHtml+'</div><div class="cb">'
     +legendHtml
-    +'<div style="display:flex;gap:0;align-items:flex-start;flex-wrap:wrap"><div id="natMapArea" style="flex:1;min-width:300px"></div><div id="natInfo" style="width:260px;flex-shrink:0;padding:12px;font-size:.78rem;border-left:1px solid var(--b);min-height:120px"><div style="color:var(--d);text-align:center;padding:40px 10px">Hover a state</div></div></div>'
+    +'<div id="natMapArea"></div>'
     +'</div></div>'
     +'<div id="natDetail"></div>'
     +'<div class="g2"><div class="card"><div class="ch">Top 15 States</div><div class="cb"><div style="height:340px"><canvas id="c1"></canvas></div></div></div>'
@@ -274,10 +274,16 @@ function renderNatGeo(features,sd,met,mx){
       }else{
         infoH='<div style="font-weight:700;margin-bottom:4px">'+(SN[st]||st||"Unknown")+'</div><div style="color:var(--d)">No Republican candidates</div>';
       }
-      var ni=document.getElementById("natInfo");if(ni)ni.innerHTML=infoH;
+      tip.style.display="block";tip.innerHTML=infoH;
+    })
+    .on("mousemove",function(ev){
+      var x=ev.pageX+14,y=ev.pageY+14;
+      if(ev.clientX+280>window.innerWidth)x=ev.pageX-270;
+      if(ev.clientY+200>window.innerHeight)y=ev.pageY-200;
+      tip.style.left=x+"px";tip.style.top=y+"px";
     })
     .on("mouseleave",function(){
-      d3.select(this).attr("stroke","#8a8070").attr("stroke-width",0.8);
+      d3.select(this).attr("stroke","#8a8070").attr("stroke-width",0.8);tip.style.display="none";
     })
     .on("click",function(ev,d){
       var st=FIPS[d.id];
@@ -575,7 +581,7 @@ function renderCong(list){
 
   document.getElementById("view").innerHTML='<div class="card"><div class="ch"><span>Congressional District Map \u2014 '+ml+'</span><span style="font-size:.7rem;color:var(--d)">Click a state to view districts</span></div><div class="cb">'
     +legendHtml
-    +'<div style="display:flex;gap:0;align-items:flex-start;flex-wrap:wrap"><div id="congStateMap" style="flex:1;min-width:300px"></div><div id="congInfo" style="width:260px;flex-shrink:0;padding:12px;font-size:.78rem;border-left:1px solid var(--b);min-height:200px"><div style="color:var(--d);text-align:center;padding:40px 10px">Hover a state</div></div></div>'
+    +'<div id="congStateMap"></div>'
     +'</div></div>'
     +'<div id="congDetail"></div>';
 
@@ -610,15 +616,36 @@ function renderCong(list){
       }else{
         infoH='<div style="font-weight:700;margin-bottom:4px">'+(SN[st]||st||"Unknown")+'</div><div style="color:var(--d)">No Republican candidates</div>';
       }
-      var ci=document.getElementById("congInfo");if(ci)ci.innerHTML=infoH;
+      tip.style.display="block";tip.innerHTML=infoH;
     })
-    .on("mouseleave",function(){d3.select(this).attr("stroke","#8a8070").attr("stroke-width",0.8)})
+    .on("mousemove",function(ev){
+      var x=ev.pageX+14,y=ev.pageY+14;
+      if(ev.clientX+280>window.innerWidth)x=ev.pageX-270;
+      if(ev.clientY+200>window.innerHeight)y=ev.pageY-200;
+      tip.style.left=x+"px";tip.style.top=y+"px";
+    })
+    .on("mouseleave",function(){d3.select(this).attr("stroke","#8a8070").attr("stroke-width",0.8);tip.style.display="none"})
     .on("click",function(ev,d){
       var st=FIPS[d.id];
       if(st&&sd[st]){congDrillState=st;render()}
     });
 
 
+
+  // Overlay congressional district lines on the state map
+  var TIGER_CD="https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Legislative/MapServer/0/query?where=1%3D1&outFields=GEOID&outSR=4326&f=geojson&maxAllowableOffset=0.03&geometryPrecision=2";
+  fetch(TIGER_CD).then(function(r){return r.json()}).then(function(gj){
+    if(!gj.features)return;
+    var albers=d3.geoAlbersUsa().scale(1280).translate([480,300]);
+    var cdPath=d3.geoPath(albers);
+    gj.features.forEach(function(f){
+      var g=fixDistrictGeom(f.geometry);
+      if(!g)return;
+      svg.append("path").attr("d",cdPath({type:"Feature",geometry:g}))
+        .attr("fill","none").attr("stroke","rgba(255,255,255,.35)").attr("stroke-width",0.3)
+        .style("pointer-events","none");
+    });
+  }).catch(function(){});
 
   // All incumbents table below
   var incs=list.filter(function(m){return m.type==="Incumbent"}).sort(function(a,b){return a.receipts-b.receipts}).slice(0,15);
@@ -638,7 +665,7 @@ function renderCongDrill(st,list,byDist,met,mx){
   var stMx=Math.max.apply(null,stMembers.map(function(m){return m[met]}).concat([1]));
 
   document.getElementById("view").innerHTML='<div class="card"><div class="ch"><span style="display:flex;align-items:center;gap:8px"><button class="btn btn-ghost" onclick="congDrillState=null;render()" style="font-size:.7rem;padding:4px 10px">\u2190 All States</button><span style="font-weight:700">'+stateName+' \u2014 '+stMembers.length+' district'+(stMembers.length>1?"s":"")+'</span></span><span style="font-size:.7rem;color:var(--d)">Hover for details</span></div><div class="cb">'
-    +'<div style="display:flex;gap:0;align-items:flex-start;flex-wrap:wrap"><div id="drillMap" style="flex:1;min-width:300px"><div style="text-align:center;color:var(--d);padding:20px">Loading districts\u2026</div></div><div id="drillInfo" style="width:280px;flex-shrink:0;padding:12px;font-size:.78rem;border-left:1px solid var(--b);min-height:200px"><div style="color:var(--d);text-align:center;padding:40px 10px">Hover a district</div></div></div>'
+    +'<div id="drillMap"><div style="text-align:center;color:var(--d);padding:20px">Loading districts\u2026</div></div>'
     +'</div></div>'
     +'<div id="drillDetail"></div>';
 
@@ -694,9 +721,15 @@ function renderCongDrill(st,list,byDist,met,mx){
           }else{
             infoH='<div style="font-weight:700;margin-bottom:4px">District '+f.properties.num+'</div><div style="color:var(--d)">No Republican candidate</div>';
           }
-          var di=document.getElementById("drillInfo");if(di)di.innerHTML=infoH;
+          tip.style.display="block";tip.innerHTML=infoH;
         })
-        .on("mouseleave",function(){d3.select(this).attr("stroke","rgba(255,255,255,.8)").attr("stroke-width",1.2)})
+        .on("mousemove",function(ev){
+          var x=ev.pageX+14,y=ev.pageY+14;
+          if(ev.clientX+280>window.innerWidth)x=ev.pageX-270;
+          if(ev.clientY+200>window.innerHeight)y=ev.pageY-200;
+          tip.style.left=x+"px";tip.style.top=y+"px";
+        })
+        .on("mouseleave",function(){d3.select(this).attr("stroke","rgba(255,255,255,.8)").attr("stroke-width",1.2);tip.style.display="none"})
         .on("click",function(ev,f){
           var members=byDist[f.properties.key];
           if(members&&members.length)showCandidate(f.properties.key);
