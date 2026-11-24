@@ -517,6 +517,12 @@ function fixDistrictGeom(g){
   return null;
 }
 
+var qtrSelState="ALL";
+var qtrSortCol="dist";
+var qtrSortAsc=true;
+function qtrSort(col){qtrSortAsc=sortOn(col,qtrSortCol,qtrSortAsc);qtrSortCol=col;render()}
+function filterQtrSide(q){q=q.toLowerCase();var items=document.querySelectorAll("#qtrSide .md-item");items.forEach(function(el){el.style.display=el.textContent.toLowerCase().indexOf(q)>=0?"":"none"})}
+
 function renderQtr(list){
   var withQ=list.filter(function(m){return m.periods&&m.periods.length>0});
   var sd={};withQ.forEach(function(m){if(!sd[m.state])sd[m.state]={code:m.state,name:m.sn,n:0,members:[]};sd[m.state].n++;sd[m.state].members.push(m)});
@@ -704,6 +710,11 @@ function renderCong(list){
   }
 }
 
+
+var listSelState="ALL";
+var listSortCol="dist";
+var listSortAsc=true;
+function listSort(col){listSortAsc=sortOn(col,listSortCol,listSortAsc);listSortCol=col;render()}
 
 function renderList(list){
   var sd=stateData(list);
