@@ -738,64 +738,81 @@ function renderCongDrill(st,list,byDist,met,mx){
 
       var mapDiv=document.getElementById("drillMap");
       mapDiv.innerHTML="";
-      var W=500,H=400;
+      var wrap=document.createElement("div");
+      wrap.style.position="relative";
+      wrap.style.maxWidth="700px";
+      wrap.style.margin="0 auto";
+      mapDiv.appendChild(wrap);
+      var W=700,H=500;
       var fc={type:"FeatureCollection",features:feats};
       var proj=d3.geoAlbersUsa().fitExtent([[15,15],[W-15,H-15]],fc);
       if(!proj)proj=d3.geoMercator().fitExtent([[15,15],[W-15,H-15]],fc);
       var path=d3.geoPath(proj);
 
-      var svg=d3.select(mapDiv).append("svg").attr("viewBox","0 0 "+W+" "+H).attr("width","100%").style("display","block");
+      // Compute centroids
+      var items=feats.map(function(f){
+        var d=path(f);if(!d)return null;
+        var c=path.centroid(f);
+        var valid=c&&isFinite(c[0])&&isFinite(c[1]);
+        return{feat:f,d:d,c:valid?c:null,num:f.properties.num,key:f.properties.key};
+      }).filter(Boolean);
 
-      svg.selectAll("path.dist").data(feats).enter().append("path")
-        .attr("class","dist").attr("d",path)
-        .attr("fill",function(f){
-          var members=byDist[f.properties.key];
+      var svg=d3.select(wrap).append("svg").attr("viewBox","0 0 "+W+" "+H).attr("width","100%").style("display","block");
+
+      svg.selectAll("path.dist").data(items).enter().append("path")
+        .attr("class","dist").attr("d",function(x){return x.d})
+        .attr("fill",function(x){
+          var members=byDist[x.key];
           if(!members||!members.length)return"#ece8e0";
           return colorScale(members[0][met],stMx);
         })
         .attr("stroke","rgba(255,255,255,.8)").attr("stroke-width",1.2)
         .style("cursor","pointer")
-        .on("mouseenter",function(ev,f){
+        .on("mouseenter",function(ev,x){
           d3.select(this).attr("stroke","#c9a227").attr("stroke-width",2.5);
-          var members=byDist[f.properties.key];var infoH="";
+          var members=byDist[x.key];
+          var hc=document.getElementById("drillHover");
+          if(!hc){hc=document.createElement("div");hc.id="drillHover";wrap.appendChild(hc)}
+          var infoH="";
           if(members&&members.length){
             var m=members[0];
-            infoH='<div style="font-weight:700;font-size:.92rem;margin-bottom:2px">'+m.name+'</div>'
-              +'<div style="font-size:.74rem;color:var(--d);margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--b)">District '+f.properties.num+' \u00b7 '+m.type+'</div>'
-              +'<div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>Raised</span><span style="font-family:var(--m);font-weight:600;color:var(--red)">'+fmt(m.receipts)+'</span></div>'
-              +'<div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.coh)+'</span></div>'
-              +'<div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.disbursements)+'</span></div>'
-              +'<div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>Individual</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.indiv)+'</span></div>'
-              +'<div style="display:flex;justify-content:space-between;margin-bottom:5px"><span>PAC</span><span style="font-family:var(--m);font-weight:600">'+fmt(m.pac)+'</span></div>'
-              +'<div style="margin-top:10px;font-size:.68rem;color:var(--red);font-weight:600">Click for full details</div>';
+            infoH='<div style="font-weight:700;font-size:13px">'+m.name+'</div>'
+              +'<div style="font-size:11px;color:#6e7689;margin:2px 0 6px">District '+x.num+' \u00b7 '+m.type+'</div>'
+              +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>Raised</span><span style="font-family:var(--m);font-weight:600;color:var(--red)">'+fK(m.receipts)+'</span></div>'
+              +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>COH</span><span style="font-family:var(--m);font-weight:600">'+fK(m.coh)+'</span></div>'
+              +'<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px"><span>Spent</span><span style="font-family:var(--m);font-weight:600">'+fK(m.disbursements)+'</span></div>'
+              +'<div style="display:flex;justify-content:space-between;font-size:11px"><span>Individual</span><span style="font-family:var(--m);font-weight:600">'+fK(m.indiv)+'</span></div>'
+              +'<div style="font-size:10px;color:var(--red);margin-top:6px;font-weight:600">Click for full details</div>';
           }else{
-            infoH='<div style="font-weight:700;margin-bottom:4px">District '+f.properties.num+'</div><div style="color:var(--d)">No Republican candidate</div>';
+            infoH='<div style="font-weight:700;font-size:13px">District '+x.num+'</div><div style="font-size:11px;color:#6e7689">No Republican candidate</div>';
           }
-          tip.style.display="block";tip.innerHTML=infoH;
+          hc.innerHTML=infoH;
+          if(x.c){
+            hc.style.cssText="position:absolute;background:var(--s);border:1px solid var(--b);border-radius:8px;padding:10px 12px;pointer-events:none;z-index:5;min-width:200px;box-shadow:0 8px 24px rgba(0,0,0,.15);"
+              +"left:"+Math.min(70,Math.max(0,x.c[0]/W*100+2))+"%;top:"+Math.min(60,Math.max(0,x.c[1]/H*100))+"%";
+          }
+          hc.style.display="block";
         })
-        .on("mousemove",function(ev){
-          var x=ev.pageX+14,y=ev.pageY+14;
-          if(ev.clientX+280>window.innerWidth)x=ev.pageX-270;
-          if(ev.clientY+200>window.innerHeight)y=ev.pageY-200;
-          tip.style.left=x+"px";tip.style.top=y+"px";
+        .on("mouseleave",function(){
+          d3.select(this).attr("stroke","rgba(255,255,255,.8)").attr("stroke-width",1.2);
+          var hc=document.getElementById("drillHover");if(hc)hc.style.display="none";
         })
-        .on("mouseleave",function(){d3.select(this).attr("stroke","rgba(255,255,255,.8)").attr("stroke-width",1.2);tip.style.display="none"})
-        .on("click",function(ev,f){
-          var members=byDist[f.properties.key];
-          if(members&&members.length)showCandidate(f.properties.key);
+        .on("click",function(ev,x){
+          var members=byDist[x.key];
+          if(members&&members.length)showCandidate(x.key);
         });
 
       // Add district number labels
-      svg.selectAll("text.dlabel").data(feats).enter().append("text")
+      svg.selectAll("text.dlabel").data(items.filter(function(x){return x.c})).enter().append("text")
         .attr("class","dlabel")
-        .attr("x",function(f){var c=path.centroid(f);return c[0]})
-        .attr("y",function(f){var c=path.centroid(f);return c[1]})
+        .attr("x",function(x){return x.c[0]})
+        .attr("y",function(x){return x.c[1]})
         .attr("text-anchor","middle").attr("dominant-baseline","central")
-        .attr("font-size",feats.length>20?"9px":feats.length>10?"11px":"14px")
+        .attr("font-size",items.length>20?"9px":items.length>10?"11px":"14px")
         .attr("font-weight","700")
-        .attr("fill",function(f){var members=byDist[f.properties.key];if(!members||!members.length)return"#999";return txtCol(members[0][met],stMx)})
+        .attr("fill",function(x){var members=byDist[x.key];if(!members||!members.length)return"#999";return txtCol(members[0][met],stMx)})
         .attr("pointer-events","none")
-        .text(function(f){return f.properties.num});
+        .text(function(x){return x.num});
     });
 
   // Build detail table
