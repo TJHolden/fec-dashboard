@@ -502,6 +502,83 @@ function distIdToKey(id){
   return st+"-"+dist;
 }
 
+function fixDistrictGeom(g){
+  if(!g)return null;
+  function fixPoly(rings){
+    rings=(rings||[]).filter(function(r){return Array.isArray(r)&&r.length>=4});
+    if(!rings.length)return null;
+    if(d3.geoArea({type:"Polygon",coordinates:rings})>2*Math.PI)
+      rings=rings.map(function(r){return r.slice().reverse()});
+    if(d3.geoArea({type:"Polygon",coordinates:rings})>2*Math.PI)
+      rings=[rings[0].slice().reverse()].filter(function(r){return d3.geoArea({type:"Polygon",coordinates:[r]})<=2*Math.PI});
+    return rings.length?rings:null;
+  }
+  if(g.type==="Polygon"){var c=fixPoly(g.coordinates);return c?{type:"Polygon",coordinates:c}:null}
+  if(g.type==="MultiPolygon"){var cs=(g.coordinates||[]).map(fixPoly).filter(Boolean);return cs.length?{type:"MultiPolygon",coordinates:cs}:null}
+  return null;
+}
+
+function renderQtr(list){
+  var withQ=list.filter(function(m){return m.periods&&m.periods.length>0});
+  var sd={};withQ.forEach(function(m){if(!sd[m.state])sd[m.state]={code:m.state,name:m.sn,n:0,members:[]};sd[m.state].n++;sd[m.state].members.push(m)});
+  var stS=Object.values(sd).sort(function(a,b){return a.name<b.name?-1:1});
+  if(!withQ.length){document.getElementById("view").innerHTML='<div class="card"><div class="cb" style="text-align:center;padding:30px;color:var(--d)">No quarterly report data available for this cycle.</div></div>';return}
+  var totalN=withQ.length;
+  var side='<div class="md-side-search"><input type="text" placeholder="Search..." oninput="filterQtrSide(this.value)"></div>';
+  side+='<div class="md-item'+(qtrSelState==="ALL"?" active":"")+'" onclick="qtrSelState=\'ALL\';render()"><span style="font-weight:700">National</span><span class="md-count">'+totalN+'</span></div>';
+  stS.forEach(function(s){
+    side+='<div class="md-item'+(s.code===qtrSelState?" active":"")+'" onclick="qtrSelState=\''+s.code+'\';render()">'
+      +'<span>'+s.name+' ('+s.code+')</span><span class="md-count">'+s.n+'</span></div>';
+  });
+  var ms,title,count;
+  if(qtrSelState==="ALL"){ms=withQ;title="National";count=totalN}
+  else{var sel=sd[qtrSelState];if(!sel){ms=[];title="Select a state";count=0}else{ms=sel.members;title=sel.name+" ("+sel.code+")";count=sel.n}}
+  ms=sortMembers(ms,qtrSortCol,qtrSortAsc);
+  // Only show Q1, Q2, Q3, Q4, Year-End columns (skip Pre-Primary, Pre-General, etc.)
+  var qtrOnly=/^(Q[1-4]|Year-End) \d{4}$/;
+  var labelSet={},labelOrder=[];
+  ms.forEach(function(m){m.periods.forEach(function(p){if(qtrOnly.test(p.label)&&!labelSet[p.label]){labelSet[p.label]=1;labelOrder.push(p.label)}})});
+  // Sort most recent first: Q3 2026, Q2 2026, Q1 2026, Year-End 2025, Q4 2025...
+  labelOrder.sort(function(a,b){
+    var ya=a.match(/\d{4}/),yb=b.match(/\d{4}/);
+    if(!ya||!yb)return 0;
+    if(yb[0]!==ya[0])return yb[0]-ya[0];
+    var order={"Q1":1,"Q2":2,"Q3":3,"Q4":4,"Year-End":5};
+    var qa=order[a.replace(/ \d{4}/,"")]||0,qb=order[b.replace(/ \d{4}/,"")]||0;
+    return qb-qa;
+  });
+  function qh(col,label){var isA=qtrSortCol===col;return '<th class="sortable'+(col!=="dist"&&col!=="name"?" r":"")+'" onclick="qtrSort(\''+col+'\')">'+label+'<span class="arrow'+(isA?" on":"")+'"> '+(isA?(qtrSortAsc?"&#9650;":"&#9660;"):"&#9650;")+'</span></th>'}
+  var detail='<div class="md-detail-head"><span>'+title+'</span><span class="md-count">'+count+'</span></div>';
+  detail+='<div class="tw"><table><thead><tr>'+qh("dist","District")+qh("name","Name")+(qtrSelState==="ALL"?qh("state","State"):"")+qh("receipts","Overall")+qh("coh","COH");
+  labelOrder.forEach(function(l){detail+='<th class="r" style="font-size:.6rem">'+l.replace("PRE-","Pre-").replace("POST-","Post-")+'</th>'});
+  detail+='</tr></thead><tbody>';
+  ms.forEach(function(m){
+    detail+='<tr style="cursor:pointer" onclick="showCandidate(\''+m.dist+'\')" title="Click for details"><td><span class="bd">'+m.dist+'</span></td><td>'+m.name+'<span class="bs">'+m.type+'</span></td>'
+      +(qtrSelState==="ALL"?'<td style="font-size:.72rem;color:var(--d)">'+m.sn+'</td>':'')
+      +'<td class="mo">'+fmt(m.receipts)+'</td><td class="mo">'+fmt(m.coh)+'</td>';
+    labelOrder.forEach(function(l){var p=null;for(var i=0;i<m.periods.length;i++){if(m.periods[i].label===l){p=m.periods[i];break}}
+      detail+='<td class="mo" style="font-size:.7rem">'+(p?fK(p.raised):"&#8212;")+'</td>'});
+    detail+='</tr>'});
+  detail+='</tbody></table></div>';
+  detail+='<div style="margin-top:12px"><button class="btn btn-ghost" onclick="'+(qtrSelState==="ALL"?"exportCSV()":"exportStateCSV(\'"+qtrSelState+"\')")+'">&#8595; Export'+(qtrSelState!=="ALL"?" "+qtrSelState:"")+'</button></div>';
+  document.getElementById("view").innerHTML='<div class="md-wrap"><div class="md-side" id="qtrSide">'+side+'</div><div class="md-detail">'+detail+'</div></div>';
+}
+
+function sortOn(col,cur,asc){return col===cur?!asc:true}
+function listSort(col){listSortAsc=sortOn(col,listSortCol,listSortAsc);listSortCol=col;render()}
+
+function sortMembers(ms,col,asc){
+  var sorted=ms.slice();
+  sorted.sort(function(a,b){
+    var va,vb;
+    if(col==="name"){va=a.name.toLowerCase();vb=b.name.toLowerCase();return asc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0)}
+    if(col==="dist"){va=a.dist;vb=b.dist;return asc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0)}
+    if(col==="state"){va=a.sn;vb=b.sn;return asc?(va<vb?-1:va>vb?1:0):(va>vb?-1:va<vb?1:0)}
+    va=a[col]||0;vb=b[col]||0;return asc?va-vb:vb-va;
+  });
+  return sorted;
+}
+
 // localStorage cache for district shapes (same as election-results)
 var _distShapeCache=null;
 function lsDistGet(){try{var raw=localStorage.getItem("fec:dist");if(!raw)return null;var o=JSON.parse(raw);if(!o||!o.t||Date.now()-o.t>30*86400000)return null;return o.v}catch(e){return null}}
