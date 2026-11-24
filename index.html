@@ -673,15 +673,10 @@ function renderCong(list){
       })
       .on("click",function(ev,x){showStatePanel(x.abbr)});
 
-    // State outlines on top using same projection
-    // Group districts by state, draw outline of each state's merged area
-    // Simple approach: redraw all district paths with darker stroke, no fill
-    var stBounds={};
-    items.forEach(function(x){if(!stBounds[x.abbr])stBounds[x.abbr]=true});
-    // Use topojson mesh from embedded states but project through identity (pre-projected matches 975x610)
-    var stMesh=topojson.mesh(STATES_TOPO,STATES_TOPO.objects.states,function(a,b){return a!==b});
-    svg.append("path").attr("d",d3.geoPath()(stMesh))
-      .attr("fill","none").attr("stroke","rgba(60,70,90,.55)").attr("stroke-width",0.9).style("pointer-events","none");
+    // State outlines using STATES10M with SAME projection as districts
+    var stMesh10=topojson.mesh(STATES10M,STATES10M.objects.states,function(a,b){return a!==b});
+    var stOutline10=d3.geoPath(proj)(stMesh10);
+    if(stOutline10){svg.append("path").attr("d",stOutline10).attr("fill","none").attr("stroke","rgba(60,70,90,.55)").attr("stroke-width",0.9).style("pointer-events","none")}
 
     wrap.insertAdjacentHTML("beforeend",'<div style="font-size:11px;color:var(--d);margin-top:6px;text-align:center">'+items.length+' districts \u00b7 hover for details \u00b7 click to open state</div>');
   }).catch(function(e){
