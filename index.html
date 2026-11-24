@@ -570,7 +570,6 @@ function renderQtr(list){
 }
 
 function sortOn(col,cur,asc){return col===cur?!asc:true}
-function listSort(col){listSortAsc=sortOn(col,listSortCol,listSortAsc);listSortCol=col;render()}
 
 function sortMembers(ms,col,asc){
   var sorted=ms.slice();
